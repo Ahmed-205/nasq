@@ -3,6 +3,7 @@ import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signI
   createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
+import { customersView, modelsView, bindScreens } from "./screens.js";
 
 const T = {
   ar: { dash:"الرئيسية", customers:"العملاء", models:"الموديلات", payments:"الدفعات", settings:"الإعدادات",
@@ -33,7 +34,7 @@ const T = {
       "auth/popup-closed-by-user":"Sign-in window was closed.","auth/api-key-not-valid":"Firebase config is missing. Check firebase-config.js."} }
 };
 const VIEWS = ["dash","customers","models","payments","settings"];
-const st = { user:null, models:[], payments:[], view:"dash", lang:localStorage.lang||"ar", theme:localStorage.theme||"light", signup:false, err:"", info:"" };
+const st = { user:null, models:[], payments:[], customers:[], filter:"", cid:null, view:"dash", lang:localStorage.lang||"ar", theme:localStorage.theme||"light", signup:false, err:"", info:"" };
 let unsubs = [];
 
 const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
@@ -42,6 +43,7 @@ const $ = s => document.querySelector(s);
 const fmt = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US",{style:"currency",currency:"EGP",maximumFractionDigits:0}).format(n||0);
 const num = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US").format(n);
 const iso = d => d.toISOString().slice(0,10);
+const ctx = () => ({ st, db, uid: st.user.uid, t, fmt, num, render });
 
 function stats() {
   const now = new Date(), today = iso(now), yr = String(now.getFullYear()), mo = today.slice(0,7);
@@ -96,7 +98,7 @@ function settingsView() {
 }
 
 function appView() {
-  const body = st.view==="dash" ? dashView() : st.view==="settings" ? settingsView()
+  const body = st.view==="dash" ? dashView() : st.view==="settings" ? settingsView() : st.view==="customers" ? customersView(ctx()) : st.view==="models" ? modelsView(ctx())
     : `<div class="top"><h2>${t(st.view)}</h2></div><div class="empty">${t("soon")}</div>`;
   return `<div class="shell"><nav><div class="logo">NAS<span>Q</span></div>${VIEWS.map(v=>
     `<button data-v="${v}" ${v===st.view?'aria-current="page"':""}>${t(v)}</button>`).join("")}</nav><main>${body}</main></div>`;
@@ -119,19 +121,20 @@ function bind() {
   on("#fp", () => { const em=$("#em").value.trim(); if(!em){st.err=t("needEmail");return render();}
     sendPasswordResetEmail(auth,em).then(()=>{st.err="";st.info=t("sent");render();}).catch(fail); });
   on("#out", () => signOut(auth));
-  document.querySelectorAll("[data-v]").forEach(b => b.onclick = () => { st.view=b.dataset.v; render(); });
-  document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { st.view=b.dataset.go; render(); });
+  document.querySelectorAll("[data-v]").forEach(b => b.onclick = () => { st.view=b.dataset.v; st.filter=""; st.cid=null; render(); });
+  document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { st.view=b.dataset.go; st.filter=b.dataset.f||""; st.cid=null; render(); });
   const sl=$("#sl"), sth=$("#st");
   if (sl) sl.onchange = () => { st.lang=localStorage.lang=sl.value; render(); };
   if (sth) sth.onchange = () => { st.theme=localStorage.theme=sth.value; render(); };
+  bindScreens(ctx());
 }
 
 onAuthStateChanged(auth, u => {
-  unsubs.forEach(f=>f()); unsubs=[]; st.user=u; st.models=[]; st.payments=[]; st.err=""; render();
+  unsubs.forEach(f=>f()); unsubs=[]; st.user=u; st.models=[]; st.payments=[]; st.customers=[]; st.err=""; render();
   if (!u) return;
   // كل مستخدم له بياناته الخاصة: users/{uid}/models و users/{uid}/payments
-  ["models","payments"].forEach(c => unsubs.push(onSnapshot(collection(db,"users",u.uid,c),
-    snap => { st[c]=snap.docs.map(d=>({id:d.id,...d.data()})); if(st.view==="dash") render(); },
+  ["models","payments","customers"].forEach(c => unsubs.push(onSnapshot(collection(db,"users",u.uid,c),
+    snap => { st[c]=snap.docs.map(d=>({id:d.id,...d.data()})); if(!document.querySelector("dialog[open]")) render(); },
     e => console.error(e))));
 });
 

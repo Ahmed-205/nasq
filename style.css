@@ -65,3 +65,18 @@ ul.list li:last-child{border:0}
  main{padding:18px 16px 90px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+/* phase 2 */
+.tools{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.tools input{flex:1;min-width:160px}
+.tw{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{padding:11px 12px;text-align:start;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mute);font-weight:500;font-size:13px}tbody tr:last-child td{border:0}
+td select{padding:5px 8px}.late-d{color:var(--accent);font-weight:700}
+.ib{background:none;border:0;color:var(--mute);padding:4px 8px}.ib:hover{color:var(--ink)}.ib.d:hover{color:var(--accent)}
+.nm{background:none;border:0;padding:0;font-weight:700;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:4px}
+.chip{border:1px solid var(--accent);background:none;color:var(--accent);border-radius:99px;padding:5px 12px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);padding:22px;width:min(540px,94vw)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.fg .full{grid-column:1/-1}
+textarea{padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);min-height:70px;resize:vertical}
+@media(max-width:760px){.fg{grid-template-columns:1fr}}
