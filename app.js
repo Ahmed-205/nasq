@@ -39,8 +39,8 @@ let unsubs = [];
 const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
 const t = k => T[st.lang][k];
 const $ = s => document.querySelector(s);
-const fmt = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG":"en-US",{style:"currency",currency:"EGP",maximumFractionDigits:0}).format(n||0);
-const num = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG":"en-US").format(n);
+const fmt = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US",{style:"currency",currency:"EGP",maximumFractionDigits:0}).format(n||0);
+const num = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US").format(n);
 const iso = d => d.toISOString().slice(0,10);
 
 function stats() {
