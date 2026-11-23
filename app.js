@@ -6,6 +6,7 @@ import { firebaseConfig } from "./firebase-config.js";
 import { customersView, modelsView, bindScreens } from "./screens.js";
 import { paymentsView, bindPayments } from "./payments.js";
 import { yearOf, payYear, yearBar, bindYearBar, yearsPanel, bindYears } from "./years.js";
+import { bellHtml, notesPanel, bindNotes, notesSettings, bindNotesSettings, checkSystem } from "./notes.js";
 
 const T = {
   ar: { dash:"الرئيسية", customers:"العملاء", models:"الموديلات", payments:"الدفعات", settings:"الإعدادات",
@@ -45,7 +46,7 @@ const $ = s => document.querySelector(s);
 const fmt = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US",{style:"currency",currency:"EGP",maximumFractionDigits:0}).format(n||0);
 const num = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US").format(n);
 const iso = d => d.toISOString().slice(0,10);
-const ctx = () => ({ st, db, uid: st.user.uid, t, fmt, num, render });
+const ctx = () => ({ st, db, uid: st.user.uid, t, fmt, num, render, bell: bellHtml });
 
 function stats() {
   const now = new Date(), today = iso(now), yr = st.year, mo = today.slice(0,7);
@@ -87,7 +88,7 @@ function dashView() {
   <div class="grid">${card("total",s.total)}${card("year",s.year)}${card("month",s.month)}${card("notStarted",s.notStarted)}
    ${card("working",s.working)}${card("waiting",s.waiting)}${card("due",s.due)}${card("late",s.late,"late")}</div>
   <div class="grid">${card("value",s.value,"money")}${card("paid",s.paid,"money")}${card("rest",s.rest,"money")}</div>
-  <div class="panel"><h3>${t("chart")}</h3><div class="bars">${s.monthly.map((v,i)=>
+  ${notesPanel(ctx(),5)}<div class="panel"><h3>${t("chart")}</h3><div class="bars">${s.monthly.map((v,i)=>
    `<div class="bar"><span>${v||""}</span><i class="${v?"":"zero"}" style="height:${v/max*100}%"></i><span>${T[st.lang].months[i].slice(0,3)}</span></div>`).join("")}</div></div>
   <div class="panel"><h3>${t("lastPay")}</h3>${pays.length?`<ul class="list">${pays.map(p=>`<li><span>${p.date||""}</span><b>${fmt(p.amount)}</b></li>`).join("")}</ul>`:`<p class="sub">${t("noPay")}</p>`}</div>`;
 }
@@ -96,7 +97,7 @@ function settingsView() {
   return `<div class="top"><h2>${t("settings")}</h2></div><div class="set">
   <label class="field"><span>${t("lang")}</span><select id="sl"><option value="ar" ${st.lang==="ar"?"selected":""}>العربية</option><option value="en" ${st.lang==="en"?"selected":""}>English</option></select></label>
   <label class="field"><span>${t("theme")}</span><select id="st"><option value="light" ${st.theme==="light"?"selected":""}>${t("light")}</option><option value="dark" ${st.theme==="dark"?"selected":""}>${t("dark")}</option></select></label>
-  <button class="btn alt" id="out">${t("out")}</button></div>${yearsPanel(ctx())}`;
+  <button class="btn alt" id="out">${t("out")}</button></div>${notesSettings(ctx())}${yearsPanel(ctx())}`;
 }
 
 function appView() {
@@ -111,6 +112,7 @@ function render() {
   document.documentElement.dataset.theme = st.theme;
   $("#app").innerHTML = st.user ? appView() : loginView();
   bind();
+  if (st.user) checkSystem(ctx());
 }
 
 function bind() {
@@ -128,7 +130,7 @@ function bind() {
   const sl=$("#sl"), sth=$("#st");
   if (sl) sl.onchange = () => { st.lang=localStorage.lang=sl.value; render(); };
   if (sth) sth.onchange = () => { st.theme=localStorage.theme=sth.value; render(); };
-  bindScreens(ctx()); bindPayments(ctx()); bindYearBar(ctx()); bindYears(ctx());
+  bindScreens(ctx()); bindPayments(ctx()); bindYearBar(ctx()); bindYears(ctx()); bindNotes(ctx()); bindNotesSettings(ctx());
 }
 
 onAuthStateChanged(auth, u => {

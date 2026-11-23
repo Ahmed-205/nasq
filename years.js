@@ -24,7 +24,7 @@ function yearStats(c, y) {
 }
 export function yearBar(c) {
   const { st } = c, l = L[st.lang];
-  return `<div class="yr"><label>${l.yr} <select id="ys">${yearList(st).map(y => `<option ${y===st.year?"selected":""}>${y}</option>`).join("")}</select></label>${isLocked(st, st.year) ? `<span class="lock">🔒 ${l.locked}</span>` : ""}</div>`;
+  return `<div class="yr">${c.bell ? c.bell(c) : ""}<label>${l.yr} <select id="ys">${yearList(st).map(y => `<option ${y===st.year?"selected":""}>${y}</option>`).join("")}</select></label>${isLocked(st, st.year) ? `<span class="lock">🔒 ${l.locked}</span>` : ""}</div>`;
 }
 export function bindYearBar(c) {
   const s = document.querySelector("#ys");
