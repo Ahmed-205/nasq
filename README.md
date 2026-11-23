@@ -31,3 +31,5 @@ service cloud.firestore {
 من Firestore أضف Document داخل `users/{uid}/models` بالحقول:
 `status` (new/scheduled/working/waiting/edit/done/delivered/canceled)، `price` (رقم)،
 `receivedDate` و`deliveryDate` بصيغة `2026-11-23`. وفي `payments`: `amount` و`date`.
+
+
