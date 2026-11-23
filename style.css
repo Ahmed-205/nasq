@@ -83,3 +83,6 @@ textarea{padding:12px 14px;border:1px solid var(--line);border-radius:8px;backgr
 /* phase 3 */
 .al{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;font-size:14px}.al input{width:120px}
 .void-r td{opacity:.5;text-decoration:line-through}.void-r td:last-child{text-decoration:none;opacity:1}
+/* phase 4 */
+.yr{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-bottom:10px;font-size:14px;color:var(--mute)}.yr select{padding:6px 10px}
+.lock{color:var(--accent);font-weight:700}

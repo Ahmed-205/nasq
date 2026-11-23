@@ -1,6 +1,7 @@
 import { collection, addDoc, setDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 import { paidOf, printStatement } from "./payments.js";
+import { yearOf, yrDoc, isLocked, lockMsg } from "./years.js";
 export const STATUS = ["new","scheduled","working","waiting","edit","done","delivered","canceled"];
 const L = {
   ar: { add:"إضافة", edit:"تعديل", del:"حذف", save:"حفظ", cancel:"إلغاء", search:"بحث...", name:"الاسم", phone:"الهاتف", trust:"درجة الثقة", notes:"ملاحظات",
@@ -49,7 +50,7 @@ function custRows(c) {
 }
 function modelRows(c) {
   const { st } = c, l = L[st.lang], q = ui.q.toLowerCase(), K = keys(), td = iso(new Date());
-  const list = st.models.filter(m => (!K[st.filter] || (m.status !== "canceled" && K[st.filter](m))) && (!ui.s || m.status === ui.s)
+  const list = st.models.filter(m => (st.filter === "total" || yearOf(m) === st.year) && (!K[st.filter] || (m.status !== "canceled" && K[st.filter](m))) && (!ui.s || m.status === ui.s)
     && ((m.name||"")+" "+(m.number||"")+" "+cname(c,m.customerId)).toLowerCase().includes(q)).sort((a,b) => (+b.number||0) - (+a.number||0));
   if (!list.length) return `<tr><td colspan="8" class="sub">${l.none}</td></tr>`;
   return list.map(m => `<tr><td>${c.num(+m.number||0)}</td><td>${esc(m.name)}</td><td>${esc(cname(c,m.customerId))}</td><td>${esc(m.machine)} ${esc(m.gauge)}</td>
@@ -91,7 +92,8 @@ function fieldHtml(c, f, v) {
 function openForm(c, kind, item) {
   const l = L[c.st.lang];
   if (kind === "m" && !c.st.customers.length) return alert(l.needC);
-  const base = item || (kind === "c" ? { trust:3 } : { status:"new", number:Math.max(0, ...c.st.models.map(m => +m.number||0)) + 1, receivedDate:iso(new Date()) });
+  if (kind === "m" && isLocked(c.st, item ? yearOf(item) : c.st.year)) return alert(lockMsg(c.st.lang));
+  const base = item || (kind === "c" ? { trust:3 } : { status:"new", price:yrDoc(c.st, c.st.year).defaultPrice || "", number:Math.max(0, ...c.st.models.map(m => +m.number||0)) + 1, receivedDate:iso(new Date()) });
   const d = document.createElement("dialog");
   d.innerHTML = `<h3 style="margin:0 0 14px">${l[(item?"edit":"new") + (kind==="c"?"C":"M")]}</h3><div class="fg">${(kind==="c"?CF:MF).map(f => fieldHtml(c, f, base[f.k] ?? "")).join("")}</div>
     <p class="err" role="alert"></p><div class="row"><button class="btn" data-s>${l.save}</button><button class="btn alt" data-x>${l.cancel}</button></div>`;
@@ -102,6 +104,7 @@ function openForm(c, kind, item) {
     const data = {}, err = d.querySelector(".err");
     d.querySelectorAll("[data-k]").forEach(e => { data[e.dataset.k] = e.type === "number" ? (e.value === "" ? 0 : +e.value) : e.value.trim(); });
     if (kind === "c") data.trust = +data.trust || 3;
+    if (kind === "m") data.year = item ? yearOf(item) : c.st.year;
     if (!data.name) return (err.textContent = l.needName);
     if (kind === "m" && !data.customerId) return (err.textContent = l.needCust);
     try { const cl = col(c, kind === "c" ? "customers" : "models");
@@ -118,7 +121,9 @@ export function bindScreens(c) {
   const q = root.querySelector("#q"); if (q) q.oninput = () => { ui.q = q.value; refresh(); };
   const fs = root.querySelector("#fs"); if (fs) fs.onchange = () => { ui.s = fs.value; refresh(); };
   const add = root.querySelector("#add"); if (add) add.onclick = () => openForm(c, kind, null);
-  root.onchange = e => { if (e.target.dataset.act === "st") setDoc(doc(col(c, "models"), e.target.dataset.id), { status:e.target.value }, { merge:true }); };
+  root.onchange = e => { if (e.target.dataset.act !== "st") return; const m = c.st.models.find(x => x.id === e.target.dataset.id);
+    if (m && isLocked(c.st, yearOf(m))) { alert(lockMsg(c.st.lang)); return c.render(); }
+    setDoc(doc(col(c, "models"), e.target.dataset.id), { status:e.target.value }, { merge:true }); };
   root.onclick = async e => {
     const b = e.target.closest("[data-act]"); if (!b || b.tagName === "SELECT") return;
     const id = b.dataset.id, a = b.dataset.act, items = kind === "c" ? c.st.customers : c.st.models;
@@ -128,6 +133,7 @@ export function bindScreens(c) {
     else if (a === "stmt") printStatement(c, id);
     else if (a === "edit") openForm(c, kind, items.find(x => x.id === id));
     else if (a === "del") {
+      if (kind === "m" && isLocked(c.st, yearOf(items.find(x => x.id === id) || {}))) return alert(lockMsg(c.st.lang));
       if (kind === "c" && c.st.models.some(m => m.customerId === id)) return alert(l.hasM);
       if (confirm(l.sure)) await deleteDoc(doc(col(c, kind === "c" ? "customers" : "models"), id));
     }

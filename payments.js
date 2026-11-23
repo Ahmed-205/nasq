@@ -1,5 +1,6 @@
 import { collection, addDoc, setDoc, doc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
+import { payYear, isLocked, lockMsg } from "./years.js";
 export const METHODS = ["cash","vodafone","instapay","bank","other"];
 const L = {
   ar: { add:"إضافة دفعة", edit:"تعديل", cancel:"إلغاء", save:"حفظ", search:"بحث باسم العميل...", customer:"العميل", amount:"المبلغ", date:"التاريخ", method:"طريقة الدفع",
@@ -50,7 +51,7 @@ export function printStatement(c, cid) {
 
 function payRows(c) {
   const l = L[c.st.lang], q = pq.toLowerCase();
-  const list = c.st.payments.filter(p => cname(c,p.customerId).toLowerCase().includes(q)).sort((a,b) => (b.date||"").localeCompare(a.date||"") || (b.created||0) - (a.created||0));
+  const list = c.st.payments.filter(p => payYear(p) === c.st.year && cname(c,p.customerId).toLowerCase().includes(q)).sort((a,b) => (b.date||"").localeCompare(a.date||"") || (b.created||0) - (a.created||0));
   if (!list.length) return `<tr><td colspan="6" class="sub">${l.none}</td></tr>`;
   return list.map(p => { const n = Object.keys(p.alloc||{}).length;
     return `<tr class="${p.void?"void-r":""}"><td>${p.date||""}</td><td>${esc(cname(c,p.customerId))}</td><td>${l.m[p.method]||""}</td><td>${c.fmt(p.amount)}</td><td>${n?`${c.num(n)} ${l.cnt}`:l.onAcct}</td>
@@ -65,6 +66,7 @@ export function paymentsView(c) {
 function openPay(c, item) {
   const l = L[c.st.lang], { st } = c;
   if (!st.customers.length) return alert(l.needC);
+  if (item && isLocked(st, payYear(item))) return alert(lockMsg(st.lang));
   const b = item || { date:iso(new Date()), method:"cash", alloc:{} };
   const d = document.createElement("dialog");
   d.innerHTML = `<h3 style="margin:0 0 14px">${item?l.edit:l.add}</h3><div class="fg">
@@ -96,6 +98,7 @@ function openPay(c, item) {
     d.querySelectorAll("[data-m]").forEach(i => { const v = +i.value || 0; if (v > 0) { if (v > +i.dataset.r + 0.001) over = true; data.alloc[i.dataset.m] = v; sum += v; } });
     if (!data.customerId) return (err.textContent = l.needCust);
     if (data.amount <= 0) return (err.textContent = l.needAmt);
+    if (isLocked(st, payYear(data))) return (err.textContent = lockMsg(st.lang));
     if (sum > data.amount + 0.001) return (err.textContent = l.overA);
     if (over) return (err.textContent = l.overR);
     try {
@@ -119,7 +122,9 @@ export function bindPayments(c) {
     const p = c.st.payments.find(x => x.id === b.dataset.id); if (!p) return;
     if (b.dataset.act === "rc") printReceipt(c, p);
     else if (b.dataset.act === "edit") openPay(c, p);
-    else if (b.dataset.act === "void" && confirm(l.sureV)) {
+    else if (b.dataset.act === "void") {
+      if (isLocked(c.st, payYear(p))) return alert(lockMsg(c.st.lang));
+      if (!confirm(l.sureV)) return;
       await setDoc(doc(col(c,"payments"), p.id), { void:true, voidedAt:Date.now() }, { merge:true });
       await addDoc(col(c,"log"), { type:"payment.void", ref:p.id, at:Date.now() });
     }

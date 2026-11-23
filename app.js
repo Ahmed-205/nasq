@@ -5,6 +5,7 @@ import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/fi
 import { firebaseConfig } from "./firebase-config.js";
 import { customersView, modelsView, bindScreens } from "./screens.js";
 import { paymentsView, bindPayments } from "./payments.js";
+import { yearOf, payYear, yearBar, bindYearBar, yearsPanel, bindYears } from "./years.js";
 
 const T = {
   ar: { dash:"الرئيسية", customers:"العملاء", models:"الموديلات", payments:"الدفعات", settings:"الإعدادات",
@@ -35,7 +36,7 @@ const T = {
       "auth/popup-closed-by-user":"Sign-in window was closed.","auth/api-key-not-valid":"Firebase config is missing. Check firebase-config.js."} }
 };
 const VIEWS = ["dash","customers","models","payments","settings"];
-const st = { user:null, models:[], payments:[], customers:[], filter:"", cid:null, view:"dash", lang:localStorage.lang||"ar", theme:localStorage.theme||"light", signup:false, err:"", info:"" };
+const st = { user:null, models:[], payments:[], customers:[], years:[], year:localStorage.year||String(new Date().getFullYear()), filter:"", cid:null, view:"dash", lang:localStorage.lang||"ar", theme:localStorage.theme||"light", signup:false, err:"", info:"" };
 let unsubs = [];
 
 const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
@@ -47,15 +48,15 @@ const iso = d => d.toISOString().slice(0,10);
 const ctx = () => ({ st, db, uid: st.user.uid, t, fmt, num, render });
 
 function stats() {
-  const now = new Date(), today = iso(now), yr = String(now.getFullYear()), mo = today.slice(0,7);
+  const now = new Date(), today = iso(now), yr = st.year, mo = today.slice(0,7);
   const in7 = iso(new Date(now.getTime()+7*864e5));
-  const live = st.models.filter(m => m.status !== "canceled");
+  const live = st.models.filter(m => m.status !== "canceled" && yearOf(m) === st.year);
   const open = live.filter(m => m.status !== "delivered" && m.status !== "done");
   const by = (...s) => live.filter(m => s.includes(m.status)).length;
   const monthly = Array(12).fill(0);
   live.forEach(m => { if ((m.receivedDate||"").startsWith(yr)) monthly[+m.receivedDate.slice(5,7)-1]++; });
-  const value = live.reduce((a,m)=>a+(+m.price||0),0), paid = st.payments.filter(p=>!p.void).reduce((a,p)=>a+(+p.amount||0),0);
-  return { total:live.length, year:live.filter(m=>(m.receivedDate||"").startsWith(yr)).length,
+  const value = live.reduce((a,m)=>a+(+m.price||0),0), paid = st.payments.filter(p=>!p.void&&payYear(p)===st.year).reduce((a,p)=>a+(+p.amount||0),0);
+  return { total:st.models.filter(m=>m.status!=="canceled").length, year:live.length,
     month:live.filter(m=>(m.receivedDate||"").startsWith(mo)).length,
     notStarted:by("new","scheduled"), working:by("working","edit"), waiting:by("waiting"),
     due:open.filter(m=>m.deliveryDate>=today&&m.deliveryDate<=in7).length,
@@ -80,7 +81,7 @@ function loginView() {
 function dashView() {
   const s = stats(), max = Math.max(1, ...s.monthly);
   const card = (k, v, cls="") => `<button class="stat ${cls}" data-go="${["paid","rest"].includes(k)?"payments":"models"}" data-f="${k}"><b>${cls==="money"?fmt(v):num(v)}</b><span>${t(k)}</span></button>`;
-  const pays = st.payments.filter(p=>!p.void).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,5);
+  const pays = st.payments.filter(p=>!p.void&&payYear(p)===st.year).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,5);
   return `<div class="top"><div><h2>${t("dash")}</h2><p class="sub">${t("hi")} ${st.user.displayName||st.user.email}</p></div></div>
   ${st.models.length?"":`<div class="empty" style="margin-bottom:22px">${t("noData")}</div>`}
   <div class="grid">${card("total",s.total)}${card("year",s.year)}${card("month",s.month)}${card("notStarted",s.notStarted)}
@@ -95,14 +96,14 @@ function settingsView() {
   return `<div class="top"><h2>${t("settings")}</h2></div><div class="set">
   <label class="field"><span>${t("lang")}</span><select id="sl"><option value="ar" ${st.lang==="ar"?"selected":""}>العربية</option><option value="en" ${st.lang==="en"?"selected":""}>English</option></select></label>
   <label class="field"><span>${t("theme")}</span><select id="st"><option value="light" ${st.theme==="light"?"selected":""}>${t("light")}</option><option value="dark" ${st.theme==="dark"?"selected":""}>${t("dark")}</option></select></label>
-  <button class="btn alt" id="out">${t("out")}</button></div>`;
+  <button class="btn alt" id="out">${t("out")}</button></div>${yearsPanel(ctx())}`;
 }
 
 function appView() {
   const body = st.view==="dash" ? dashView() : st.view==="settings" ? settingsView() : st.view==="customers" ? customersView(ctx()) : st.view==="models" ? modelsView(ctx()) : st.view==="payments" ? paymentsView(ctx())
     : `<div class="top"><h2>${t(st.view)}</h2></div><div class="empty">${t("soon")}</div>`;
   return `<div class="shell"><nav><div class="logo">NAS<span>Q</span></div>${VIEWS.map(v=>
-    `<button data-v="${v}" ${v===st.view?'aria-current="page"':""}>${t(v)}</button>`).join("")}</nav><main>${body}</main></div>`;
+    `<button data-v="${v}" ${v===st.view?'aria-current="page"':""}>${t(v)}</button>`).join("")}</nav><main>${yearBar(ctx())}${body}</main></div>`;
 }
 
 function render() {
@@ -127,14 +128,14 @@ function bind() {
   const sl=$("#sl"), sth=$("#st");
   if (sl) sl.onchange = () => { st.lang=localStorage.lang=sl.value; render(); };
   if (sth) sth.onchange = () => { st.theme=localStorage.theme=sth.value; render(); };
-  bindScreens(ctx()); bindPayments(ctx());
+  bindScreens(ctx()); bindPayments(ctx()); bindYearBar(ctx()); bindYears(ctx());
 }
 
 onAuthStateChanged(auth, u => {
-  unsubs.forEach(f=>f()); unsubs=[]; st.user=u; st.models=[]; st.payments=[]; st.customers=[]; st.err=""; render();
+  unsubs.forEach(f=>f()); unsubs=[]; st.user=u; st.models=[]; st.payments=[]; st.customers=[]; st.years=[]; st.err=""; render();
   if (!u) return;
   // كل مستخدم له بياناته الخاصة: users/{uid}/models و users/{uid}/payments
-  ["models","payments","customers"].forEach(c => unsubs.push(onSnapshot(collection(db,"users",u.uid,c),
+  ["models","payments","customers","years"].forEach(c => unsubs.push(onSnapshot(collection(db,"users",u.uid,c),
     snap => { st[c]=snap.docs.map(d=>({id:d.id,...d.data()})); if(!document.querySelector("dialog[open]")) render(); },
     e => console.error(e))));
 });
