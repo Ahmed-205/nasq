@@ -4,6 +4,7 @@ import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signI
 import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { customersView, modelsView, bindScreens } from "./screens.js";
+import { paymentsView, bindPayments } from "./payments.js";
 
 const T = {
   ar: { dash:"الرئيسية", customers:"العملاء", models:"الموديلات", payments:"الدفعات", settings:"الإعدادات",
@@ -53,7 +54,7 @@ function stats() {
   const by = (...s) => live.filter(m => s.includes(m.status)).length;
   const monthly = Array(12).fill(0);
   live.forEach(m => { if ((m.receivedDate||"").startsWith(yr)) monthly[+m.receivedDate.slice(5,7)-1]++; });
-  const value = live.reduce((a,m)=>a+(+m.price||0),0), paid = st.payments.reduce((a,p)=>a+(+p.amount||0),0);
+  const value = live.reduce((a,m)=>a+(+m.price||0),0), paid = st.payments.filter(p=>!p.void).reduce((a,p)=>a+(+p.amount||0),0);
   return { total:live.length, year:live.filter(m=>(m.receivedDate||"").startsWith(yr)).length,
     month:live.filter(m=>(m.receivedDate||"").startsWith(mo)).length,
     notStarted:by("new","scheduled"), working:by("working","edit"), waiting:by("waiting"),
@@ -78,8 +79,8 @@ function loginView() {
 
 function dashView() {
   const s = stats(), max = Math.max(1, ...s.monthly);
-  const card = (k, v, cls="") => `<button class="stat ${cls}" data-go="models" data-f="${k}"><b>${cls==="money"?fmt(v):num(v)}</b><span>${t(k)}</span></button>`;
-  const pays = [...st.payments].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,5);
+  const card = (k, v, cls="") => `<button class="stat ${cls}" data-go="${["paid","rest"].includes(k)?"payments":"models"}" data-f="${k}"><b>${cls==="money"?fmt(v):num(v)}</b><span>${t(k)}</span></button>`;
+  const pays = st.payments.filter(p=>!p.void).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,5);
   return `<div class="top"><div><h2>${t("dash")}</h2><p class="sub">${t("hi")} ${st.user.displayName||st.user.email}</p></div></div>
   ${st.models.length?"":`<div class="empty" style="margin-bottom:22px">${t("noData")}</div>`}
   <div class="grid">${card("total",s.total)}${card("year",s.year)}${card("month",s.month)}${card("notStarted",s.notStarted)}
@@ -98,7 +99,7 @@ function settingsView() {
 }
 
 function appView() {
-  const body = st.view==="dash" ? dashView() : st.view==="settings" ? settingsView() : st.view==="customers" ? customersView(ctx()) : st.view==="models" ? modelsView(ctx())
+  const body = st.view==="dash" ? dashView() : st.view==="settings" ? settingsView() : st.view==="customers" ? customersView(ctx()) : st.view==="models" ? modelsView(ctx()) : st.view==="payments" ? paymentsView(ctx())
     : `<div class="top"><h2>${t(st.view)}</h2></div><div class="empty">${t("soon")}</div>`;
   return `<div class="shell"><nav><div class="logo">NAS<span>Q</span></div>${VIEWS.map(v=>
     `<button data-v="${v}" ${v===st.view?'aria-current="page"':""}>${t(v)}</button>`).join("")}</nav><main>${body}</main></div>`;
@@ -126,7 +127,7 @@ function bind() {
   const sl=$("#sl"), sth=$("#st");
   if (sl) sl.onchange = () => { st.lang=localStorage.lang=sl.value; render(); };
   if (sth) sth.onchange = () => { st.theme=localStorage.theme=sth.value; render(); };
-  bindScreens(ctx());
+  bindScreens(ctx()); bindPayments(ctx());
 }
 
 onAuthStateChanged(auth, u => {

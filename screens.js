@@ -1,5 +1,6 @@
 import { collection, addDoc, setDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
+import { paidOf, printStatement } from "./payments.js";
 export const STATUS = ["new","scheduled","working","waiting","edit","done","delivered","canceled"];
 const L = {
   ar: { add:"إضافة", edit:"تعديل", del:"حذف", save:"حفظ", cancel:"إلغاء", search:"بحث...", name:"الاسم", phone:"الهاتف", trust:"درجة الثقة", notes:"ملاحظات",
@@ -34,7 +35,7 @@ const cname = (c, id) => (c.st.customers.find(x => x.id === id) || {}).name || "
 function acct(c, cu) {
   const ms = c.st.models.filter(m => m.customerId === cu.id && m.status !== "canceled");
   const total = ms.reduce((a,m) => a + (+m.price||0), 0);
-  const paid = c.st.payments.filter(p => p.customerId === cu.id).reduce((a,p) => a + (+p.amount||0), 0);
+  const paid = c.st.payments.filter(p => p.customerId === cu.id && !p.void).reduce((a,p) => a + (+p.amount||0), 0);
   return { n:ms.length, total, paid, rest:total-paid, ms };
 }
 const acts = (l, id) => `<button class="ib" data-act="edit" data-id="${id}">${l.edit}</button><button class="ib d" data-act="del" data-id="${id}">${l.del}</button>`;
@@ -63,9 +64,9 @@ export function customersView(c) {
   const x = st.customers.find(y => y.id === st.cid);
   if (x) { const s = acct(c, x);
     return `<div id="scr" data-k="c"><div class="top"><div><h2>${esc(x.name)}</h2><p class="sub" dir="ltr">${esc(x.phone)} ${"★".repeat(x.trust||3)}</p></div>
-    <div class="row"><button class="btn alt" data-act="edit" data-id="${x.id}">${l.edit}</button><button class="btn alt" data-act="back">${l.back}</button></div></div>
+    <div class="row"><button class="btn alt" data-act="edit" data-id="${x.id}">${l.edit}</button><button class="btn alt" data-act="stmt" data-id="${x.id}">${st.lang==="ar"?"كشف حساب":"Statement"}</button><button class="btn alt" data-act="back">${l.back}</button></div></div>
     <div class="grid"><div class="stat money"><b>${c.fmt(s.total)}</b><span>${l.total}</span></div><div class="stat money"><b>${c.fmt(s.paid)}</b><span>${l.paid}</span></div><div class="stat money"><b>${c.fmt(s.rest)}</b><span>${l.rest}</span></div></div>
-    <div class="panel"><h3>${c.t("models")}</h3>${s.ms.length ? `<ul class="list">${s.ms.map(m=>`<li><span>${c.num(+m.number||0)} - ${esc(m.name)} (${l.s[m.status]||""})</span><b>${c.fmt(m.price)}</b></li>`).join("")}</ul>` : `<p class="sub">${l.none}</p>`}</div>
+    <div class="panel"><h3>${c.t("models")}</h3>${s.ms.length ? `<ul class="list">${s.ms.map(m=>`<li><span>${c.num(+m.number||0)} - ${esc(m.name)} (${l.s[m.status]||""})</span><b>${c.fmt(paidOf(c,m.id))} / ${c.fmt(m.price)}</b></li>`).join("")}</ul>` : `<p class="sub">${l.none}</p>`}</div>
     ${x.notes ? `<div class="panel"><h3>${l.notes}</h3><p>${esc(x.notes)}</p></div>` : ""}</div>`; }
   return `<div id="scr" data-k="c"><div class="top"><h2>${c.t("customers")}</h2></div>${tools(c, l.customer)}
   <div class="tw"><table><thead><tr><th>${l.name}</th><th>${l.phone}</th><th>${l.count}</th><th>${l.total}</th><th>${l.paid}</th><th>${l.rest}</th><th>${l.trust}</th><th></th></tr></thead><tbody id="rows">${custRows(c)}</tbody></table></div></div>`;
@@ -124,6 +125,7 @@ export function bindScreens(c) {
     if (a === "view") { c.st.cid = id; c.render(); }
     else if (a === "back") { c.st.cid = null; c.render(); }
     else if (a === "clr") { c.st.filter = ""; c.render(); }
+    else if (a === "stmt") printStatement(c, id);
     else if (a === "edit") openForm(c, kind, items.find(x => x.id === id));
     else if (a === "del") {
       if (kind === "c" && c.st.models.some(m => m.customerId === id)) return alert(l.hasM);
