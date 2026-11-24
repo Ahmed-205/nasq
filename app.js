@@ -72,11 +72,11 @@ function stats() {
 }
 
 function verifyView() {
-  return `<div class="login"><section class="knit"><h1>NAS<span>Q</span></h1><p>${t("tag")}</p></section><section class="form"><h2>${tv("vTitle")}</h2><p class="sub">${tv("vText")}</p>
+  return `<div class="login">${hero()}<section class="form"><h2>${tv("vTitle")}</h2><p class="sub">${tv("vText")}</p>
   <p class="msg">${st.info}</p><div class="row"><button class="btn" id="vs">${tv("vSend")}</button><button class="btn alt" id="vd">${tv("vDone")}</button><button class="btn alt" id="out">${t("out")}</button></div></section></div>`;
 }
 function loginView() {
-  return `<div class="login"><section class="knit"><h1>NAS<span>Q</span></h1><p>${t("tag")}</p></section>
+  return `<div class="login">${hero()}
   <section class="form"><h2>${st.signup?t("signup"):t("login")}</h2>
   <label class="field"><span>${t("email")}</span><input id="em" type="email" autocomplete="email" dir="ltr"></label>
   <label class="field"><span>${t("pass")}</span><input id="pw" type="password" autocomplete="${st.signup?"new-password":"current-password"}" dir="ltr"></label>
@@ -93,7 +93,7 @@ function dashView() {
   const s = stats(), max = Math.max(1, ...s.monthly);
   const card = (k, v, cls="") => `<button class="stat ${cls}" data-go="${["paid","rest"].includes(k)?"payments":"models"}" data-f="${k}"><b>${cls==="money"?fmt(v):num(v)}</b><span>${t(k)}</span></button>`;
   const pays = st.payments.filter(p=>!p.void&&payYear(p)===st.year).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,5);
-  return `<div class="top"><div><h2>${t("dash")}</h2><p class="sub">${t("hi")} ${st.user.displayName||st.user.email}</p></div></div>
+  return `<div class="top"><div><h2>${t("dash")}</h2><p class="sub">${t("hi")} ${hx(st.user.displayName||st.user.email)}</p></div></div>
   ${st.models.length?"":`<div class="empty" style="margin-bottom:22px">${t("noData")}</div>`}
   <div class="grid">${card("total",s.total)}${card("year",s.year)}${card("month",s.month)}${card("notStarted",s.notStarted)}
    ${card("working",s.working)}${card("waiting",s.waiting)}${card("due",s.due)}${card("late",s.late,"late")}</div>
@@ -110,11 +110,20 @@ function settingsView() {
   <button class="btn alt" id="out">${t("out")}</button></div>${notesSettings(ctx())}${yearsPanel(ctx())}${accountPanel(ctx())}${teamPanel(ctx())}${customPanel(ctx())}${toolsPanel(ctx())}`;
 }
 
+const hx = s => String(s).replace(/[&<>"']/g, c => "&#" + c.charCodeAt(0) + ";");
+const ICON = { dash:'<rect x="3" y="3" width="7" height="9" rx="1.8"/><rect x="14" y="3" width="7" height="5" rx="1.8"/><rect x="14" y="12" width="7" height="9" rx="1.8"/><rect x="3" y="16" width="7" height="5" rx="1.8"/>',
+  customers:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .6 3.2 2.3 3.5 5.2"/>',
+  models:'<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>', payments:'<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10.5h18M7 15h3"/>',
+  settings:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>' };
+const FEAT = { ar:["العملاء والموديلات في مكان واحد","حسابات ودفعات بدقة","سنوات مالية وتقارير جاهزة"], en:["Customers and models in one place","Accurate accounts and payments","Financial years and ready reports"] };
+const hero = () => `<section class="knit"><div><h1>NAS<span>Q</span></h1><p>${t("tag")}</p><ul class="feat">${FEAT[st.lang].map(x => `<li>${x}</li>`).join("")}</ul></div></section>`;
 function appView() {
   const body = st.view==="dash" ? dashView() : st.view==="settings" ? settingsView() : st.view==="customers" ? customersView(ctx()) : st.view==="models" ? modelsView(ctx()) : st.view==="payments" ? paymentsView(ctx())
     : `<div class="top"><h2>${t(st.view)}</h2></div><div class="empty">${t("soon")}</div>`;
+  const nm = st.user.displayName || st.user.email || "", rl = ({ ar:{ owner:"المالك", manager:"مدير", staff:"موظف", viewer:"مشاهدة فقط" }, en:{ owner:"Owner", manager:"Manager", staff:"Staff", viewer:"Viewer" } })[st.lang][st.role] || "";
   return `<div class="shell"><nav><div class="logo">NAS<span>Q</span></div>${VIEWS.map(v=>
-    `<button data-v="${v}" ${v===st.view?'aria-current="page"':""}>${t(v)}</button>`).join("")}</nav><main>${yearBar(ctx())}${body}</main></div>`;
+    `<button data-v="${v}" ${v===st.view?'aria-current="page"':""}><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[v]}</svg><span>${t(v)}</span></button>`).join("")}
+  <div class="navfoot"><i>${hx(nm.trim().charAt(0).toUpperCase())}</i><div><b>${hx(nm)}</b><small>${rl}</small></div></div></nav><main>${yearBar(ctx())}${body}</main></div>`;
 }
 
 function render() {
