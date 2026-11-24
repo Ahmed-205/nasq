@@ -93,3 +93,6 @@ textarea{padding:12px 14px;border:1px solid var(--line);border-radius:8px;backgr
 .nt:last-child{border-bottom:0}.nt.rd{color:var(--mute)}
 .nt.s3,.nt.s2{padding-inline-start:10px;border-inline-start:3px solid var(--warn)}.nt.s3{border-inline-start-color:var(--accent)}
 .chk{display:flex;gap:8px;align-items:center;margin:8px 0}
+/* phase 6: roles */
+body.ro #add,body.ro [data-act=edit],body.ro [data-act=del],body.ro [data-act=void]{display:none}
+body.nm [data-act=del],body.nm #yrs [data-ya],body.nm #yrs input{display:none}

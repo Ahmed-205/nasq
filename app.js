@@ -1,11 +1,12 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword,
-  createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+  createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, onSnapshot, getDoc, setDoc, doc, query, where } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { customersView, modelsView, bindScreens } from "./screens.js";
 import { paymentsView, bindPayments } from "./payments.js";
 import { yearOf, payYear, yearBar, bindYearBar, yearsPanel, bindYears } from "./years.js";
+import { teamPanel, bindTeam } from "./team.js";
 import { bellHtml, notesPanel, bindNotes, notesSettings, bindNotesSettings, checkSystem } from "./notes.js";
 
 const T = {
@@ -37,16 +38,19 @@ const T = {
       "auth/popup-closed-by-user":"Sign-in window was closed.","auth/api-key-not-valid":"Firebase config is missing. Check firebase-config.js."} }
 };
 const VIEWS = ["dash","customers","models","payments","settings"];
-const st = { user:null, models:[], payments:[], customers:[], years:[], year:localStorage.year||String(new Date().getFullYear()), filter:"", cid:null, view:"dash", lang:localStorage.lang||"ar", theme:localStorage.theme||"light", signup:false, err:"", info:"" };
+const st = { user:null, models:[], payments:[], customers:[], years:[], members:[], invites:[], ws:null, role:null, pending:"", year:localStorage.year||String(new Date().getFullYear()), filter:"", cid:null, view:"dash", lang:localStorage.lang||"ar", theme:localStorage.theme||"light", signup:false, err:"", info:"" };
 let unsubs = [];
 
 const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
 const t = k => T[st.lang][k];
+const V = { ar:{ vTitle:"أكّد بريدك الإلكتروني", vText:"تمت دعوتك للانضمام لفريق عمل. أكّد بريدك أولًا (راجع صندوق الوارد) ثم اضغط «تم التأكيد».", vSend:"إرسال رابط التأكيد", vDone:"تم التأكيد", sent:"اتبعت الرابط على بريدك.", still:"البريد لسه مش مؤكد.", wait:"جاري التحميل..." },
+  en:{ vTitle:"Verify your email", vText:"You've been invited to a team. Verify your email first (check your inbox), then tap “I verified”.", vSend:"Send verification link", vDone:"I verified", sent:"Link sent to your email.", still:"Email is not verified yet.", wait:"Loading..." } };
+const tv = k => V[st.lang][k];
 const $ = s => document.querySelector(s);
 const fmt = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US",{style:"currency",currency:"EGP",maximumFractionDigits:0}).format(n||0);
 const num = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US").format(n);
 const iso = d => d.toISOString().slice(0,10);
-const ctx = () => ({ st, db, uid: st.user.uid, t, fmt, num, render, bell: bellHtml });
+const ctx = () => ({ st, db, uid: st.ws, role: st.role, t, fmt, num, render, bell: bellHtml });
 
 function stats() {
   const now = new Date(), today = iso(now), yr = st.year, mo = today.slice(0,7);
@@ -65,6 +69,10 @@ function stats() {
     value, paid, rest:value-paid, monthly };
 }
 
+function verifyView() {
+  return `<div class="login"><section class="knit"><h1>NAS<span>Q</span></h1><p>${t("tag")}</p></section><section class="form"><h2>${tv("vTitle")}</h2><p class="sub">${tv("vText")}</p>
+  <p class="msg">${st.info}</p><div class="row"><button class="btn" id="vs">${tv("vSend")}</button><button class="btn alt" id="vd">${tv("vDone")}</button><button class="btn alt" id="out">${t("out")}</button></div></section></div>`;
+}
 function loginView() {
   return `<div class="login"><section class="knit"><h1>NAS<span>Q</span></h1><p>${t("tag")}</p></section>
   <section class="form"><h2>${st.signup?t("signup"):t("login")}</h2>
@@ -97,7 +105,7 @@ function settingsView() {
   return `<div class="top"><h2>${t("settings")}</h2></div><div class="set">
   <label class="field"><span>${t("lang")}</span><select id="sl"><option value="ar" ${st.lang==="ar"?"selected":""}>العربية</option><option value="en" ${st.lang==="en"?"selected":""}>English</option></select></label>
   <label class="field"><span>${t("theme")}</span><select id="st"><option value="light" ${st.theme==="light"?"selected":""}>${t("light")}</option><option value="dark" ${st.theme==="dark"?"selected":""}>${t("dark")}</option></select></label>
-  <button class="btn alt" id="out">${t("out")}</button></div>${notesSettings(ctx())}${yearsPanel(ctx())}`;
+  <button class="btn alt" id="out">${t("out")}</button></div>${notesSettings(ctx())}${yearsPanel(ctx())}${teamPanel(ctx())}`;
 }
 
 function appView() {
@@ -110,36 +118,63 @@ function appView() {
 function render() {
   document.documentElement.lang = st.lang; document.documentElement.dir = st.lang==="ar"?"rtl":"ltr";
   document.documentElement.dataset.theme = st.theme;
-  $("#app").innerHTML = st.user ? appView() : loginView();
+  $("#app").innerHTML = !st.user ? loginView() : st.pending ? verifyView() : st.ws ? appView() : `<div class="empty" style="margin:60px auto;max-width:360px">${tv("wait")}</div>`;
   bind();
-  if (st.user) checkSystem(ctx());
+  document.body.classList.toggle("ro", st.role==="viewer");
+  document.body.classList.toggle("nm", !!st.ws && !["owner","manager"].includes(st.role));
+  if (st.role==="viewer") document.querySelectorAll("select[data-act]").forEach(s => s.disabled = true);
+  if (st.ws) checkSystem(ctx());
 }
 
 function bind() {
   const on = (s, f) => { const el = $(s); if (el) el.onclick = f; };
   const fail = e => { st.err = T[st.lang].e[e.code] || e.message; st.info = ""; render(); };
   on("#go", () => { const em=$("#em").value.trim(), pw=$("#pw").value;
-    (st.signup ? createUserWithEmailAndPassword(auth,em,pw) : signInWithEmailAndPassword(auth,em,pw)).catch(fail); });
+    (st.signup ? createUserWithEmailAndPassword(auth,em,pw).then(r => sendEmailVerification(r.user).catch(()=>{})) : signInWithEmailAndPassword(auth,em,pw)).catch(fail); });
   on("#gg", () => signInWithPopup(auth,new GoogleAuthProvider()).catch(fail));
   on("#tg", () => { st.signup=!st.signup; st.err=st.info=""; render(); });
   on("#fp", () => { const em=$("#em").value.trim(); if(!em){st.err=t("needEmail");return render();}
     sendPasswordResetEmail(auth,em).then(()=>{st.err="";st.info=t("sent");render();}).catch(fail); });
   on("#out", () => signOut(auth));
+  on("#vs", () => sendEmailVerification(auth.currentUser).then(()=>{ st.info=tv("sent"); render(); }).catch(fail));
+  on("#vd", async () => { await auth.currentUser.reload(); await auth.currentUser.getIdToken(true);
+    if (auth.currentUser.emailVerified) boot(auth.currentUser); else { st.info=tv("still"); render(); } });
   document.querySelectorAll("[data-v]").forEach(b => b.onclick = () => { st.view=b.dataset.v; st.filter=""; st.cid=null; render(); });
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { st.view=b.dataset.go; st.filter=b.dataset.f||""; st.cid=null; render(); });
   const sl=$("#sl"), sth=$("#st");
   if (sl) sl.onchange = () => { st.lang=localStorage.lang=sl.value; render(); };
   if (sth) sth.onchange = () => { st.theme=localStorage.theme=sth.value; render(); };
-  bindScreens(ctx()); bindPayments(ctx()); bindYearBar(ctx()); bindYears(ctx()); bindNotes(ctx()); bindNotesSettings(ctx());
+  bindScreens(ctx()); bindPayments(ctx()); bindYearBar(ctx()); bindYears(ctx()); bindNotes(ctx()); bindNotesSettings(ctx()); bindTeam(ctx());
 }
 
+async function boot(u) {
+  unsubs.forEach(f=>f()); unsubs=[];
+  Object.assign(st, { models:[], payments:[], customers:[], years:[], members:[], invites:[], ws:null, role:null, pending:"", info:"" });
+  const em = (u.email||"").toLowerCase();
+  try {
+    const inv = em ? await getDoc(doc(db,"invites",em)) : null;
+    if (inv && inv.exists() && inv.data().ownerUid !== u.uid) {
+      if (!u.emailVerified) { st.pending = "verify"; return render(); }
+      const d = inv.data(), mref = doc(db,"users",d.ownerUid,"members",u.uid);
+      let ms = await getDoc(mref);
+      const key = "nasq_decl_" + d.ownerUid, who = d.ownerEmail || "?";
+      if (!ms.exists() && (localStorage[key] || !confirm(st.lang==="ar" ? `تمت دعوتك لمساحة عمل ${who}. تقبل الانضمام؟` : `You were invited to ${who}'s workspace. Join?`))) {
+        localStorage[key] = "1"; st.ws = u.uid; st.role = "owner";
+      } else {
+        if (!ms.exists()) { await setDoc(mref, { email:em, role:d.role, name:d.name||u.displayName||"", joined:Date.now() }); ms = await getDoc(mref); }
+        st.ws = d.ownerUid; st.role = ms.data().role;
+      }
+    } else { st.ws = u.uid; st.role = "owner"; }
+  } catch (e) { console.error(e); st.ws = u.uid; st.role = "owner"; }
+  render();
+  const sub = (q, key) => unsubs.push(onSnapshot(q, snap => { st[key] = snap.docs.map(d => ({ id:d.id, ...d.data() })); if (!document.querySelector("dialog[open]")) render(); }, e => console.error(e)));
+  ["models","payments","customers","years"].forEach(k => sub(collection(db,"users",st.ws,k), k));
+  if (st.role === "owner") { sub(collection(db,"users",st.ws,"members"), "members"); sub(query(collection(db,"invites"), where("ownerUid","==",st.ws)), "invites"); }
+}
 onAuthStateChanged(auth, u => {
-  unsubs.forEach(f=>f()); unsubs=[]; st.user=u; st.models=[]; st.payments=[]; st.customers=[]; st.years=[]; st.err=""; render();
-  if (!u) return;
-  // كل مستخدم له بياناته الخاصة: users/{uid}/models و users/{uid}/payments
-  ["models","payments","customers","years"].forEach(c => unsubs.push(onSnapshot(collection(db,"users",u.uid,c),
-    snap => { st[c]=snap.docs.map(d=>({id:d.id,...d.data()})); if(!document.querySelector("dialog[open]")) render(); },
-    e => console.error(e))));
+  st.user = u; st.err = "";
+  if (!u) { unsubs.forEach(f=>f()); unsubs=[]; Object.assign(st, { ws:null, role:null, pending:"" }); return render(); }
+  boot(u);
 });
 
 render();

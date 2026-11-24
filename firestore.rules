@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner(o) { return signedIn() && request.auth.uid == o; }
+    function memberDoc(o) { return /databases/$(database)/documents/users/$(o)/members/$(request.auth.uid); }
+    function isMember(o) { return signedIn() && exists(memberDoc(o)); }
+    function mrole(o) { return get(memberDoc(o)).data.role; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function inv(e) { return get(/databases/$(database)/documents/invites/$(e)).data; }
+
+    match /users/{owner}/members/{mid} {
+      allow read: if isOwner(owner) || (signedIn() && request.auth.uid == mid);
+      allow create: if signedIn() && request.auth.uid == mid
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/invites/$(myEmail()))
+        && inv(myEmail()).ownerUid == owner
+        && request.resource.data.role == inv(myEmail()).role
+        && request.resource.data.email == myEmail();
+      allow update, delete: if isOwner(owner);
+    }
+    match /users/{owner}/{coll}/{docId} {
+      allow read: if coll != 'members' && (isOwner(owner) || isMember(owner));
+      allow create, update: if coll != 'members' && (isOwner(owner) || (isMember(owner) &&
+        (mrole(owner) == 'manager' || (mrole(owner) == 'staff' && coll != 'years'))));
+      allow delete: if coll != 'members' && (isOwner(owner) || (isMember(owner) && mrole(owner) == 'manager'));
+    }
+    match /invites/{email} {
+      allow read: if signedIn() && (request.auth.token.email.lower() == email || resource.data.ownerUid == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if signedIn() && resource.data.ownerUid == request.auth.uid && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+  }
+}
