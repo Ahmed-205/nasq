@@ -96,3 +96,5 @@ textarea{padding:12px 14px;border:1px solid var(--line);border-radius:8px;backgr
 /* phase 6: roles */
 body.ro #add,body.ro [data-act=edit],body.ro [data-act=del],body.ro [data-act=void]{display:none}
 body.nm [data-act=del],body.nm #yrs [data-ya],body.nm #yrs input{display:none}
+/* phase 7 */
+dialog.nd{width:min(560px,94vw)}

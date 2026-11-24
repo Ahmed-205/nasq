@@ -1,12 +1,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { getFirestore, collection, onSnapshot, getDoc, setDoc, doc, query, where } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getFirestore, collection, onSnapshot, getDoc, setDoc, doc, query, where, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { customersView, modelsView, bindScreens } from "./screens.js";
 import { paymentsView, bindPayments } from "./payments.js";
 import { yearOf, payYear, yearBar, bindYearBar, yearsPanel, bindYears } from "./years.js";
 import { teamPanel, bindTeam } from "./team.js";
+import { searchBtn, toolsPanel, bindTools } from "./tools.js";
 import { bellHtml, notesPanel, bindNotes, notesSettings, bindNotesSettings, checkSystem } from "./notes.js";
 
 const T = {
@@ -50,7 +51,7 @@ const $ = s => document.querySelector(s);
 const fmt = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US",{style:"currency",currency:"EGP",maximumFractionDigits:0}).format(n||0);
 const num = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US").format(n);
 const iso = d => d.toISOString().slice(0,10);
-const ctx = () => ({ st, db, uid: st.ws, role: st.role, t, fmt, num, render, bell: bellHtml });
+const ctx = () => ({ st, db, uid: st.ws, role: st.role, t, fmt, num, render, bell: c => searchBtn(c) + bellHtml(c) });
 
 function stats() {
   const now = new Date(), today = iso(now), yr = st.year, mo = today.slice(0,7);
@@ -105,7 +106,7 @@ function settingsView() {
   return `<div class="top"><h2>${t("settings")}</h2></div><div class="set">
   <label class="field"><span>${t("lang")}</span><select id="sl"><option value="ar" ${st.lang==="ar"?"selected":""}>العربية</option><option value="en" ${st.lang==="en"?"selected":""}>English</option></select></label>
   <label class="field"><span>${t("theme")}</span><select id="st"><option value="light" ${st.theme==="light"?"selected":""}>${t("light")}</option><option value="dark" ${st.theme==="dark"?"selected":""}>${t("dark")}</option></select></label>
-  <button class="btn alt" id="out">${t("out")}</button></div>${notesSettings(ctx())}${yearsPanel(ctx())}${teamPanel(ctx())}`;
+  <button class="btn alt" id="out">${t("out")}</button></div>${notesSettings(ctx())}${yearsPanel(ctx())}${teamPanel(ctx())}${toolsPanel(ctx())}`;
 }
 
 function appView() {
@@ -144,12 +145,12 @@ function bind() {
   const sl=$("#sl"), sth=$("#st");
   if (sl) sl.onchange = () => { st.lang=localStorage.lang=sl.value; render(); };
   if (sth) sth.onchange = () => { st.theme=localStorage.theme=sth.value; render(); };
-  bindScreens(ctx()); bindPayments(ctx()); bindYearBar(ctx()); bindYears(ctx()); bindNotes(ctx()); bindNotesSettings(ctx()); bindTeam(ctx());
+  bindScreens(ctx()); bindPayments(ctx()); bindYearBar(ctx()); bindYears(ctx()); bindNotes(ctx()); bindNotesSettings(ctx()); bindTeam(ctx()); bindTools(ctx());
 }
 
 async function boot(u) {
   unsubs.forEach(f=>f()); unsubs=[];
-  Object.assign(st, { models:[], payments:[], customers:[], years:[], members:[], invites:[], ws:null, role:null, pending:"", info:"" });
+  Object.assign(st, { models:[], payments:[], customers:[], years:[], members:[], invites:[], log:[], ws:null, role:null, pending:"", info:"" });
   const em = (u.email||"").toLowerCase();
   try {
     const inv = em ? await getDoc(doc(db,"invites",em)) : null;
@@ -169,6 +170,7 @@ async function boot(u) {
   render();
   const sub = (q, key) => unsubs.push(onSnapshot(q, snap => { st[key] = snap.docs.map(d => ({ id:d.id, ...d.data() })); if (!document.querySelector("dialog[open]")) render(); }, e => console.error(e)));
   ["models","payments","customers","years"].forEach(k => sub(collection(db,"users",st.ws,k), k));
+  if (["owner","manager"].includes(st.role)) sub(query(collection(db,"users",st.ws,"log"), orderBy("at","desc"), limit(50)), "log");
   if (st.role === "owner") { sub(collection(db,"users",st.ws,"members"), "members"); sub(query(collection(db,"invites"), where("ownerUid","==",st.ws)), "invites"); }
 }
 onAuthStateChanged(auth, u => {

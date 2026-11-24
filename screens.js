@@ -108,7 +108,8 @@ function openForm(c, kind, item) {
     if (!data.name) return (err.textContent = l.needName);
     if (kind === "m" && !data.customerId) return (err.textContent = l.needCust);
     try { const cl = col(c, kind === "c" ? "customers" : "models");
-      if (item) await setDoc(doc(cl, item.id), data, { merge:true }); else await addDoc(cl, { ...data, created:Date.now() });
+      let ref; if (item) { await setDoc(doc(cl, item.id), data, { merge:true }); ref = item.id; } else ref = (await addDoc(cl, { ...data, created:Date.now() })).id;
+      await addDoc(col(c, "log"), { type:(kind === "c" ? "customer." : "model.") + (item ? "edit" : "create"), ref, label:data.name, by:c.st.user.email, at:Date.now() });
       d.close();
     } catch (e) { console.error(e); err.textContent = l.err; }
   };
@@ -123,7 +124,8 @@ export function bindScreens(c) {
   const add = root.querySelector("#add"); if (add) add.onclick = () => openForm(c, kind, null);
   root.onchange = e => { if (e.target.dataset.act !== "st") return; const m = c.st.models.find(x => x.id === e.target.dataset.id);
     if (m && isLocked(c.st, yearOf(m))) { alert(lockMsg(c.st.lang)); return c.render(); }
-    setDoc(doc(col(c, "models"), e.target.dataset.id), { status:e.target.value }, { merge:true }); };
+    setDoc(doc(col(c, "models"), e.target.dataset.id), { status:e.target.value }, { merge:true })
+      .then(() => addDoc(col(c, "log"), { type:"model.status", ref:e.target.dataset.id, label:m ? m.name : "", to:e.target.value, by:c.st.user.email, at:Date.now() })); };
   root.onclick = async e => {
     const b = e.target.closest("[data-act]"); if (!b || b.tagName === "SELECT") return;
     const id = b.dataset.id, a = b.dataset.act, items = kind === "c" ? c.st.customers : c.st.models;
@@ -135,7 +137,8 @@ export function bindScreens(c) {
     else if (a === "del") {
       if (kind === "m" && isLocked(c.st, yearOf(items.find(x => x.id === id) || {}))) return alert(lockMsg(c.st.lang));
       if (kind === "c" && c.st.models.some(m => m.customerId === id)) return alert(l.hasM);
-      if (confirm(l.sure)) await deleteDoc(doc(col(c, kind === "c" ? "customers" : "models"), id));
+      if (confirm(l.sure)) { const it = items.find(x => x.id === id) || {}; await deleteDoc(doc(col(c, kind === "c" ? "customers" : "models"), id));
+        await addDoc(col(c, "log"), { type:(kind === "c" ? "customer" : "model") + ".delete", ref:id, label:it.name || "", by:c.st.user.email, at:Date.now() }); }
     }
   };
 }

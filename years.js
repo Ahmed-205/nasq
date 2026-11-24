@@ -62,7 +62,7 @@ function openNew(c) {
 export function bindYears(c) {
   const root = document.querySelector("#yrs"); if (!root) return;
   const l = L[c.st.lang], yc = () => collection(c.db, "users", c.uid, "years");
-  const log = o => addDoc(collection(c.db, "users", c.uid, "log"), { ...o, at:Date.now() });
+  const log = o => addDoc(collection(c.db, "users", c.uid, "log"), { ...o, at:Date.now(), by:c.st.user.email });
   root.onclick = async e => {
     const b = e.target.closest("[data-ya]"); if (!b) return;
     const a = b.dataset.ya, y = b.dataset.y;

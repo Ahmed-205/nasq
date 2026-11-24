@@ -104,9 +104,9 @@ function openPay(c, item) {
     try {
       if (item) { const { id, ...rest } = item;
         await setDoc(doc(col(c,"payments"), id), { ...rest, ...data });
-        await addDoc(col(c,"log"), { type:"payment.edit", ref:id, before:rest, after:data, at:Date.now() });
+        await addDoc(col(c,"log"), { type:"payment.edit", ref:id, before:rest, after:data, at:Date.now(), by:c.st.user.email });
       } else { const r = await addDoc(col(c,"payments"), { ...data, void:false, created:Date.now() });
-        await addDoc(col(c,"log"), { type:"payment.create", ref:r.id, after:data, at:Date.now() }); }
+        await addDoc(col(c,"log"), { type:"payment.create", ref:r.id, after:data, at:Date.now(), by:c.st.user.email }); }
       d.close();
     } catch (e) { console.error(e); err.textContent = l.err; }
   };
@@ -126,7 +126,7 @@ export function bindPayments(c) {
       if (isLocked(c.st, payYear(p))) return alert(lockMsg(c.st.lang));
       if (!confirm(l.sureV)) return;
       await setDoc(doc(col(c,"payments"), p.id), { void:true, voidedAt:Date.now() }, { merge:true });
-      await addDoc(col(c,"log"), { type:"payment.void", ref:p.id, at:Date.now() });
+      await addDoc(col(c,"log"), { type:"payment.void", ref:p.id, at:Date.now(), by:c.st.user.email });
     }
   };
 }
