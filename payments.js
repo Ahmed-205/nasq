@@ -2,7 +2,7 @@ import { collection, addDoc, setDoc, doc } from "https://www.gstatic.com/firebas
 
 import { payYear, isLocked, lockMsg } from "./years.js";
 export const METHODS = ["cash","vodafone","instapay","bank","other"];
-const L = {
+export const L = {
   ar: { add:"إضافة دفعة", edit:"تعديل", cancel:"إلغاء", save:"حفظ", search:"بحث باسم العميل...", customer:"العميل", amount:"المبلغ", date:"التاريخ", method:"طريقة الدفع",
     notes:"ملاحظات", alloc:"توزيع الدفعة على الموديلات (اختياري)", left:"المتبقي", auto:"توزيع تلقائي", unalloc:"غير موزّع (على الحساب)", noM:"لا توجد موديلات عليها مبالغ مستحقة.",
     needC:"أضف عميل أولًا من شاشة العملاء.", needCust:"اختر العميل.", needAmt:"اكتب مبلغ أكبر من صفر.", overA:"مجموع التوزيع أكبر من مبلغ الدفعة.",
@@ -18,7 +18,7 @@ const L = {
     total:"Total", rcTitle:"Payment receipt", rcNo:"Receipt no.", print:"Print", popup:"The browser blocked the window. Allow pop-ups and try again.", cnt:"models",
     m:{cash:"Cash",vodafone:"Vodafone Cash",instapay:"InstaPay",bank:"Bank transfer",other:"Other"} }
 };
-let pq = "";
+let pq = "", pf = { cu:"", df:"", dt:"" };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const iso = d => d.toISOString().slice(0,10);
 const col = (c, k) => collection(c.db, "users", c.uid, k);
@@ -51,7 +51,7 @@ export function printStatement(c, cid) {
 
 function payRows(c) {
   const l = L[c.st.lang], q = pq.toLowerCase();
-  const list = c.st.payments.filter(p => payYear(p) === c.st.year && cname(c,p.customerId).toLowerCase().includes(q)).sort((a,b) => (b.date||"").localeCompare(a.date||"") || (b.created||0) - (a.created||0));
+  const list = c.st.payments.filter(p => payYear(p) === c.st.year && cname(c,p.customerId).toLowerCase().includes(q) && (!pf.cu || p.customerId === pf.cu) && (!pf.df || (p.date || "") >= pf.df) && (!pf.dt || ((p.date || "") !== "" && p.date <= pf.dt))).sort((a,b) => (b.date||"").localeCompare(a.date||"") || (b.created||0) - (a.created||0));
   if (!list.length) return `<tr><td colspan="6" class="sub">${l.none}</td></tr>`;
   return list.map(p => { const n = Object.keys(p.alloc||{}).length;
     return `<tr class="${p.void?"void-r":""}"><td>${p.date||""}</td><td>${esc(cname(c,p.customerId))}</td><td>${l.m[p.method]||""}</td><td>${c.fmt(p.amount)}</td><td>${n?`${c.num(n)} ${l.cnt}`:l.onAcct}</td>
@@ -60,6 +60,8 @@ function payRows(c) {
 export function paymentsView(c) {
   const l = L[c.st.lang];
   return `<div id="pay"><div class="top"><h2>${c.t("payments")}</h2></div><div class="tools"><input id="q" type="search" placeholder="${l.search}" value="${esc(pq)}"><button class="btn" id="add">${l.add}</button></div>
+  <div class="tools"><select id="pc"><option value="">${c.st.lang === "ar" ? "كل العملاء" : "All customers"}</option>${[...c.st.customers].sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(x => `<option value="${x.id}" ${pf.cu === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>
+  <input id="pdf" type="date" value="${pf.df}"><input id="pdt" type="date" value="${pf.dt}"></div>
   <div class="tw"><table><thead><tr><th>${l.date}</th><th>${l.customer}</th><th>${l.method}</th><th>${l.amount}</th><th>${l.alloc.split(" (")[0]}</th><th></th></tr></thead><tbody id="rows">${payRows(c)}</tbody></table></div></div>`;
 }
 
@@ -116,6 +118,7 @@ export function bindPayments(c) {
   const root = document.querySelector("#pay"); if (!root) return;
   const l = L[c.st.lang];
   const q = root.querySelector("#q"); q.oninput = () => { pq = q.value; root.querySelector("#rows").innerHTML = payRows(c); };
+  [["#pc","cu"],["#pdf","df"],["#pdt","dt"]].forEach(([s, k]) => { const el = root.querySelector(s); if (el) el.onchange = () => { pf[k] = el.value; root.querySelector("#rows").innerHTML = payRows(c); }; });
   root.querySelector("#add").onclick = () => openPay(c, null);
   root.onclick = async e => {
     const b = e.target.closest("[data-act]"); if (!b) return;

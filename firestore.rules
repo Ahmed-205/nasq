@@ -22,7 +22,7 @@ service cloud.firestore {
     match /users/{owner}/{coll}/{docId} {
       allow read: if coll != 'members' && (isOwner(owner) || isMember(owner));
       allow create, update: if coll != 'members' && (isOwner(owner) || (isMember(owner) &&
-        (mrole(owner) == 'manager' || (mrole(owner) == 'staff' && coll != 'years'))));
+        (mrole(owner) == 'manager' || (mrole(owner) == 'staff' && coll != 'years' && coll != 'settings' && coll != 'backups'))));
       allow delete: if coll != 'members' && (isOwner(owner) || (isMember(owner) && mrole(owner) == 'manager'));
     }
     match /invites/{email} {

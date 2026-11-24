@@ -1,8 +1,8 @@
-import { collection, doc, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { collection, doc, writeBatch, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { yearOf, payYear } from "./years.js";
 import { paidOf } from "./payments.js";
 
-const L = {
+export const L = {
   ar: { search:"بحث شامل (Ctrl+K)", sph:"ابحث في العملاء والموديلات والدفعات...", shint:"اكتب اسم عميل أو رقم هاتف أو اسم موديل أو مبلغ.", noRes:"مفيش نتائج.", close:"إغلاق",
     cust:"العملاء", mods:"الموديلات", pays:"الدفعات", more:n => `+ ${n} نتيجة أخرى`, voided:"ملغاة",
     title:"التقارير والنسخ الاحتياطي", exportHint:y => `التصدير بيشمل العملاء، وموديلات ودفعات السنة المالية ${y}.`, xlsx:"تصدير Excel", pdf:"تقرير PDF (طباعة)",
@@ -100,13 +100,46 @@ function backup(c) {
   download(`nasq-backup-${iso(new Date())}.json`, new Blob([JSON.stringify({ app:"nasq", version:1, at:Date.now(), by:c.st.user.email, data })], { type:"application/json" }));
   localStorage.nasq_lastbackup = iso(new Date()); c.render();
 }
-async function restore(c, file) {
-  const l = L[c.st.lang]; let j; try { j = JSON.parse(await file.text()); } catch { return alert(l.badFile); }
-  if (!j || j.app !== "nasq" || !j.data) return alert(l.badFile);
-  const rows = []; COLS.forEach(k => (j.data[k] || []).forEach(r => { if (r && r.id) { const { id, ...rest } = r; rows.push([k, String(id), rest]); } }));
-  if (!rows.length) return alert(l.badFile); if (!confirm(l.sureRestore(rows.length))) return;
+const AL = { ar:{ auto:"نسخ احتياطي تلقائي يومي داخل Firebase (آخر 14 يوم)", last:d => `آخر نسخة تلقائية: ${d}`, none:"لسه ماتعملتش نسخة تلقائية.", pick:"استرجاع من النسخة المختارة", big:"البيانات كبيرة على النسخ التلقائي. استخدم النسخة اليدوية." },
+  en:{ auto:"Automatic daily backup inside Firebase (last 14 days)", last:d => `Last automatic backup: ${d}`, none:"No automatic backup yet.", pick:"Restore the selected backup", big:"Data is too large for automatic backup. Use manual backup." } };
+const bcol = (c, id) => doc(c.db, "users", c.uid, "backups", id);
+const sdoc = c => doc(c.db, "users", c.uid, "settings", "main");
+let running = false, failedDay = "";
+export async function autoBackup(c) {
+  const { st } = c, today = iso(new Date());
+  if (st.role !== "owner" || running || failedDay === today || !st.settingsLoaded) return;
+  if (!["models","payments","customers","years"].every(k => st.ready && st.ready[k])) return;
+  if (st.settings.autoBackup === false || st.settings.lastAuto === today) return;
+  running = true;
+  try {
+    const parts = COLS.map(k => [k, JSON.stringify(st[k])]);
+    if (parts.some(([, j]) => j.length > 900000)) { await setDoc(sdoc(c), { lastAuto:today, autoErr:"big" }, { merge:true }); return; }
+    for (const [k, j] of parts) await setDoc(bcol(c, `${today}_${k}`), { json:j, col:k, date:today, at:Date.now() });
+    const dates = [...new Set([...(st.settings.autoDates || []), today])].sort();
+    for (const d of dates.slice(0, -14)) for (const k of COLS) await deleteDoc(bcol(c, `${d}_${k}`));
+    await setDoc(sdoc(c), { lastAuto:today, autoDates:dates.slice(-14), autoErr:"" }, { merge:true });
+  } catch (e) { console.error(e); failedDay = today; } finally { running = false; }
+}
+const rowsOf = j => { const rows = []; COLS.forEach(k => (j.data[k] || []).forEach(r => { if (r && r.id) { const { id, ...rest } = r; rows.push([k, String(id), rest]); } })); return rows; };
+async function applyRows(c, rows) {
+  const l = L[c.st.lang]; if (!rows.length) return alert(l.badFile); if (!confirm(l.sureRestore(rows.length))) return;
   try { for (let i = 0; i < rows.length; i += 400) { const b = writeBatch(c.db); rows.slice(i, i + 400).forEach(([k, id, r]) => b.set(doc(collection(c.db, "users", c.uid, k), id), r)); await b.commit(); } alert(l.restored); }
   catch (e) { console.error(e); alert(l.err); }
+}
+async function restore(c, file) {
+  let j; try { j = JSON.parse(await file.text()); } catch { return alert(L[c.st.lang].badFile); }
+  if (!j || j.app !== "nasq" || !j.data) return alert(L[c.st.lang].badFile);
+  return applyRows(c, rowsOf(j));
+}
+async function restoreAuto(c, date) {
+  if (!date) return;
+  try { const data = {}; for (const k of COLS) { const s = await getDoc(bcol(c, `${date}_${k}`)); data[k] = s.exists() ? JSON.parse(s.data().json) : []; } await applyRows(c, rowsOf({ data })); }
+  catch (e) { console.error(e); alert(L[c.st.lang].err); }
+}
+function autoUi(c) {
+  const { st } = c, a = AL[st.lang], s = st.settings || {}, ds = [...(s.autoDates || [])].reverse();
+  return `<label class="chk"><input type="checkbox" id="ab" ${s.autoBackup === false ? "" : "checked"}> ${a.auto}</label><p class="sub">${s.lastAuto ? a.last(s.lastAuto) : a.none}${s.autoErr === "big" ? " — " + a.big : ""}</p>
+  ${ds.length ? `<div class="row"><select id="ad">${ds.map(d => `<option>${d}</option>`).join("")}</select><button class="btn alt" data-tool="restoreauto">${a.pick}</button></div>` : ""}`;
 }
 export function toolsPanel(c) {
   const { st } = c, l = L[st.lang], own = st.role === "owner", adm = own || st.role === "manager", lb = localStorage.nasq_lastbackup || "";
@@ -116,7 +149,7 @@ export function toolsPanel(c) {
   return `<div class="panel" id="tools" style="margin-top:22px"><h3>${l.title}</h3><p class="sub">${l.exportHint(st.year)}</p>
   <div class="row"><button class="btn alt" data-tool="xlsx">${l.xlsx}</button><button class="btn alt" data-tool="pdf">${l.pdf}</button></div>
   ${adm ? `<h3 style="margin-top:18px">${l.backup}</h3><p class="${stale ? "err" : "sub"}">${lb ? l.last(lb) + (stale ? " — " + l.stale : "") : l.never}</p>
-  <div class="row"><button class="btn" data-tool="backup">${l.doBackup}</button>${own ? `<button class="btn alt" data-tool="restore">${l.doRestore}</button><input type="file" id="rf" accept=".json,application/json" hidden>` : ""}</div><p class="sub">${l.autoNote}</p>
+  <div class="row"><button class="btn" data-tool="backup">${l.doBackup}</button>${own ? `<button class="btn alt" data-tool="restore">${l.doRestore}</button><input type="file" id="rf" accept=".json,application/json" hidden>` : ""}</div><p class="sub">${l.autoNote}</p>${own ? autoUi(c) : ""}
   <h3 style="margin-top:18px">${l.log}</h3><div class="tw"><table><thead><tr><th>${l.time}</th><th>${l.by}</th><th>${l.act}</th><th>${l.item}</th></tr></thead><tbody>${rows}</tbody></table></div>` : ""}</div>`;
 }
 export function bindTools(c) {
@@ -125,6 +158,7 @@ export function bindTools(c) {
   document.querySelectorAll("[data-search]").forEach(b => b.onclick = () => openSearch(c));
   const root = document.querySelector("#tools"); if (!root) return;
   const rf = root.querySelector("#rf"); if (rf) rf.onchange = () => { if (rf.files[0]) restore(c, rf.files[0]); rf.value = ""; };
+  const ab = root.querySelector("#ab"); if (ab) ab.onchange = () => setDoc(sdoc(c), { autoBackup:ab.checked }, { merge:true });
   root.onclick = e => { const b = e.target.closest("[data-tool]"); if (!b) return; const a = b.dataset.tool;
-    if (a === "xlsx") exportXlsx(c); else if (a === "pdf") exportPdf(c); else if (a === "backup") backup(c); else if (a === "restore" && rf) rf.click(); };
+    if (a === "xlsx") exportXlsx(c); else if (a === "pdf") exportPdf(c); else if (a === "backup") backup(c); else if (a === "restore" && rf) rf.click(); else if (a === "restoreauto") restoreAuto(c, root.querySelector("#ad").value); };
 }

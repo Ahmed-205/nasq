@@ -3,7 +3,7 @@ import { collection, addDoc, setDoc, doc, deleteDoc } from "https://www.gstatic.
 import { paidOf, printStatement } from "./payments.js";
 import { yearOf, yrDoc, isLocked, lockMsg } from "./years.js";
 export const STATUS = ["new","scheduled","working","waiting","edit","done","delivered","canceled"];
-const L = {
+export const L = {
   ar: { add:"إضافة", edit:"تعديل", del:"حذف", save:"حفظ", cancel:"إلغاء", search:"بحث...", name:"الاسم", phone:"الهاتف", trust:"درجة الثقة", notes:"ملاحظات",
     count:"الموديلات", total:"الحساب", paid:"المدفوع", rest:"المتبقي", number:"الرقم", mname:"اسم الموديل", customer:"العميل", machine:"نوع الماكينة", gauge:"الجوج",
     received:"تاريخ الاستلام", start:"بدء الرسم", delivery:"التسليم", price:"السعر", status:"الحالة", all:"كل الحالات", back:"رجوع", none:"لا توجد بيانات بعد.",
@@ -21,9 +21,9 @@ const CF = [{k:"name",l:"name",y:"text",f:1},{k:"phone",l:"phone",y:"tel"},{k:"t
 const MF = [{k:"number",l:"number",y:"number"},{k:"name",l:"mname",y:"text"},{k:"customerId",l:"customer",y:"cust",f:1},{k:"machine",l:"machine",y:"text"},{k:"gauge",l:"gauge",y:"text"},
   {k:"receivedDate",l:"received",y:"date"},{k:"startDate",l:"start",y:"date"},{k:"deliveryDate",l:"delivery",y:"date"},{k:"price",l:"price",y:"number"},
   {k:"status",l:"status",y:"status",f:1},{k:"notes",l:"notes",y:"area",f:1}];
-const ui = { k:"", q:"", s:"" };
+const ui = { k:"", q:"", s:"", cu:"", dk:"receivedDate", df:"", dt:"" };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const sync = k => { if (ui.k !== k) { ui.k = k; ui.q = ""; ui.s = ""; } };
+const sync = k => { if (ui.k !== k) { ui.k = k; ui.q = ""; ui.s = ""; ui.cu = ""; ui.dk = "receivedDate"; ui.df = ""; ui.dt = ""; } };
 const iso = d => d.toISOString().slice(0,10);
 const op = m => !["delivered","done","canceled"].includes(m.status);
 const keys = () => { const n = new Date(), td = iso(n), in7 = iso(new Date(n.getTime()+7*864e5));
@@ -50,7 +50,7 @@ function custRows(c) {
 }
 function modelRows(c) {
   const { st } = c, l = L[st.lang], q = ui.q.toLowerCase(), K = keys(), td = iso(new Date());
-  const list = st.models.filter(m => (st.filter === "total" || yearOf(m) === st.year) && (!K[st.filter] || (m.status !== "canceled" && K[st.filter](m))) && (!ui.s || m.status === ui.s)
+  const list = st.models.filter(m => (st.filter === "total" || yearOf(m) === st.year) && (!K[st.filter] || (m.status !== "canceled" && K[st.filter](m))) && (!ui.s || m.status === ui.s) && (!ui.cu || m.customerId === ui.cu) && (!ui.df || (m[ui.dk] || "") >= ui.df) && (!ui.dt || ((m[ui.dk] || "") !== "" && m[ui.dk] <= ui.dt))
     && ((m.name||"")+" "+(m.number||"")+" "+cname(c,m.customerId)).toLowerCase().includes(q)).sort((a,b) => (+b.number||0) - (+a.number||0));
   if (!list.length) return `<tr><td colspan="8" class="sub">${l.none}</td></tr>`;
   return list.map(m => `<tr><td>${c.num(+m.number||0)}</td><td>${esc(m.name)}</td><td>${esc(cname(c,m.customerId))}</td><td>${esc(m.machine)} ${esc(m.gauge)}</td>
@@ -72,11 +72,15 @@ export function customersView(c) {
   return `<div id="scr" data-k="c"><div class="top"><h2>${c.t("customers")}</h2></div>${tools(c, l.customer)}
   <div class="tw"><table><thead><tr><th>${l.name}</th><th>${l.phone}</th><th>${l.count}</th><th>${l.total}</th><th>${l.paid}</th><th>${l.rest}</th><th>${l.trust}</th><th></th></tr></thead><tbody id="rows">${custRows(c)}</tbody></table></div></div>`;
 }
+function xf(c) { const { st } = c, ar = st.lang === "ar", l = L[st.lang];
+  return `<div class="tools"><select id="fc"><option value="">${ar ? "كل العملاء" : "All customers"}</option>${[...st.customers].sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(x => `<option value="${x.id}" ${ui.cu === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>
+  <select id="fk"><option value="receivedDate" ${ui.dk === "receivedDate" ? "selected" : ""}>${l.received}</option><option value="deliveryDate" ${ui.dk === "deliveryDate" ? "selected" : ""}>${l.delivery}</option></select>
+  <input id="df" type="date" value="${ui.df}" aria-label="${ar ? "من" : "From"}"><input id="dt" type="date" value="${ui.dt}" aria-label="${ar ? "إلى" : "To"}"></div>`; }
 export function modelsView(c) {
   sync("m"); const { st } = c, l = L[st.lang];
   const chip = keys()[st.filter] && st.filter !== "total" ? `<button class="chip" data-act="clr">${c.t(st.filter)} ✕</button>` : "";
   const sel = `<select id="fs"><option value="">${l.all}</option>${STATUS.map(s=>`<option value="${s}" ${ui.s===s?"selected":""}>${l.s[s]}</option>`).join("")}</select>`;
-  return `<div id="scr" data-k="m"><div class="top"><h2>${c.t("models")}</h2>${chip}</div>${tools(c, l.mname, sel)}
+  return `<div id="scr" data-k="m"><div class="top"><h2>${c.t("models")}</h2>${chip}</div>${tools(c, l.mname, sel)}${xf(c)}
   <div class="tw"><table><thead><tr><th>${l.number}</th><th>${l.mname}</th><th>${l.customer}</th><th>${l.machine}</th><th>${l.delivery}</th><th>${l.price}</th><th>${l.status}</th><th></th></tr></thead><tbody id="rows">${modelRows(c)}</tbody></table></div></div>`;
 }
 
@@ -121,6 +125,7 @@ export function bindScreens(c) {
   const refresh = () => { const r = root.querySelector("#rows"); if (r) r.innerHTML = kind === "c" ? custRows(c) : modelRows(c); };
   const q = root.querySelector("#q"); if (q) q.oninput = () => { ui.q = q.value; refresh(); };
   const fs = root.querySelector("#fs"); if (fs) fs.onchange = () => { ui.s = fs.value; refresh(); };
+  [["#fc","cu"],["#fk","dk"],["#df","df"],["#dt","dt"]].forEach(([s, k]) => { const el = root.querySelector(s); if (el) el.onchange = () => { ui[k] = el.value; refresh(); }; });
   const add = root.querySelector("#add"); if (add) add.onclick = () => openForm(c, kind, null);
   root.onchange = e => { if (e.target.dataset.act !== "st") return; const m = c.st.models.find(x => x.id === e.target.dataset.id);
     if (m && isLocked(c.st, yearOf(m))) { alert(lockMsg(c.st.lang)); return c.render(); }

@@ -7,7 +7,8 @@ import { customersView, modelsView, bindScreens } from "./screens.js";
 import { paymentsView, bindPayments } from "./payments.js";
 import { yearOf, payYear, yearBar, bindYearBar, yearsPanel, bindYears } from "./years.js";
 import { teamPanel, bindTeam } from "./team.js";
-import { searchBtn, toolsPanel, bindTools } from "./tools.js";
+import { searchBtn, toolsPanel, bindTools, autoBackup } from "./tools.js";
+import { accountPanel, customPanel, bindPrefs, applySettings } from "./prefs.js";
 import { bellHtml, notesPanel, bindNotes, notesSettings, bindNotesSettings, checkSystem } from "./notes.js";
 
 const T = {
@@ -48,10 +49,10 @@ const V = { ar:{ vTitle:"أكّد بريدك الإلكتروني", vText:"تم�
   en:{ vTitle:"Verify your email", vText:"You've been invited to a team. Verify your email first (check your inbox), then tap “I verified”.", vSend:"Send verification link", vDone:"I verified", sent:"Link sent to your email.", still:"Email is not verified yet.", wait:"Loading..." } };
 const tv = k => V[st.lang][k];
 const $ = s => document.querySelector(s);
-const fmt = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US",{style:"currency",currency:"EGP",maximumFractionDigits:0}).format(n||0);
+const fmt = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US",{style:"currency",currency:(st.settings && st.settings.currency) || "EGP",maximumFractionDigits:0}).format(n||0);
 const num = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US").format(n);
 const iso = d => d.toISOString().slice(0,10);
-const ctx = () => ({ st, db, uid: st.ws, role: st.role, t, fmt, num, render, bell: c => searchBtn(c) + bellHtml(c) });
+const ctx = () => ({ st, db, uid: st.ws, role: st.role, auth, t, fmt, num, render, bell: c => searchBtn(c) + bellHtml(c) });
 
 function stats() {
   const now = new Date(), today = iso(now), yr = st.year, mo = today.slice(0,7);
@@ -106,7 +107,7 @@ function settingsView() {
   return `<div class="top"><h2>${t("settings")}</h2></div><div class="set">
   <label class="field"><span>${t("lang")}</span><select id="sl"><option value="ar" ${st.lang==="ar"?"selected":""}>العربية</option><option value="en" ${st.lang==="en"?"selected":""}>English</option></select></label>
   <label class="field"><span>${t("theme")}</span><select id="st"><option value="light" ${st.theme==="light"?"selected":""}>${t("light")}</option><option value="dark" ${st.theme==="dark"?"selected":""}>${t("dark")}</option></select></label>
-  <button class="btn alt" id="out">${t("out")}</button></div>${notesSettings(ctx())}${yearsPanel(ctx())}${teamPanel(ctx())}${toolsPanel(ctx())}`;
+  <button class="btn alt" id="out">${t("out")}</button></div>${notesSettings(ctx())}${yearsPanel(ctx())}${accountPanel(ctx())}${teamPanel(ctx())}${customPanel(ctx())}${toolsPanel(ctx())}`;
 }
 
 function appView() {
@@ -124,7 +125,7 @@ function render() {
   document.body.classList.toggle("ro", st.role==="viewer");
   document.body.classList.toggle("nm", !!st.ws && !["owner","manager"].includes(st.role));
   if (st.role==="viewer") document.querySelectorAll("select[data-act]").forEach(s => s.disabled = true);
-  if (st.ws) checkSystem(ctx());
+  if (st.ws) { checkSystem(ctx()); autoBackup(ctx()); }
 }
 
 function bind() {
@@ -145,12 +146,12 @@ function bind() {
   const sl=$("#sl"), sth=$("#st");
   if (sl) sl.onchange = () => { st.lang=localStorage.lang=sl.value; render(); };
   if (sth) sth.onchange = () => { st.theme=localStorage.theme=sth.value; render(); };
-  bindScreens(ctx()); bindPayments(ctx()); bindYearBar(ctx()); bindYears(ctx()); bindNotes(ctx()); bindNotesSettings(ctx()); bindTeam(ctx()); bindTools(ctx());
+  bindScreens(ctx()); bindPayments(ctx()); bindYearBar(ctx()); bindYears(ctx()); bindNotes(ctx()); bindNotesSettings(ctx()); bindTeam(ctx()); bindTools(ctx()); bindPrefs(ctx());
 }
 
 async function boot(u) {
   unsubs.forEach(f=>f()); unsubs=[];
-  Object.assign(st, { models:[], payments:[], customers:[], years:[], members:[], invites:[], log:[], ws:null, role:null, pending:"", info:"" });
+  Object.assign(st, { models:[], payments:[], customers:[], years:[], members:[], invites:[], log:[], settings:{}, settingsLoaded:false, ready:{}, ws:null, role:null, pending:"", info:"" });
   const em = (u.email||"").toLowerCase();
   try {
     const inv = em ? await getDoc(doc(db,"invites",em)) : null;
@@ -168,8 +169,9 @@ async function boot(u) {
     } else { st.ws = u.uid; st.role = "owner"; }
   } catch (e) { console.error(e); st.ws = u.uid; st.role = "owner"; }
   render();
-  const sub = (q, key) => unsubs.push(onSnapshot(q, snap => { st[key] = snap.docs.map(d => ({ id:d.id, ...d.data() })); if (!document.querySelector("dialog[open]")) render(); }, e => console.error(e)));
+  const sub = (q, key) => unsubs.push(onSnapshot(q, snap => { st.ready[key] = 1; st[key] = snap.docs.map(d => ({ id:d.id, ...d.data() })); if (!document.querySelector("dialog[open]")) render(); }, e => console.error(e)));
   ["models","payments","customers","years"].forEach(k => sub(collection(db,"users",st.ws,k), k));
+  unsubs.push(onSnapshot(doc(db,"users",st.ws,"settings","main"), s => { st.settings = s.exists() ? s.data() : {}; st.settingsLoaded = true; applySettings(st.settings); if (!document.querySelector("dialog[open]")) render(); }, e => console.error(e)));
   if (["owner","manager"].includes(st.role)) sub(query(collection(db,"users",st.ws,"log"), orderBy("at","desc"), limit(50)), "log");
   if (st.role === "owner") { sub(collection(db,"users",st.ws,"members"), "members"); sub(query(collection(db,"invites"), where("ownerUid","==",st.ws)), "invites"); }
 }
