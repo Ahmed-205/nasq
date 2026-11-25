@@ -7,14 +7,14 @@ export const L = {
     notes:"ملاحظات", alloc:"توزيع الدفعة على الموديلات (اختياري)", left:"المتبقي", auto:"توزيع تلقائي", unalloc:"غير موزّع (على الحساب)", noM:"لا توجد موديلات عليها مبالغ مستحقة.",
     needC:"أضف عميل أولًا من شاشة العملاء.", needCust:"اختر العميل.", needAmt:"اكتب مبلغ أكبر من صفر.", overA:"مجموع التوزيع أكبر من مبلغ الدفعة.",
     overR:"أحد المبالغ الموزّعة أكبر من المتبقي على الموديل.", sureV:"إلغاء الدفعة؟ هتفضل ظاهرة في السجل لكن مش هتتحسب.", err:"حصل خطأ في الحفظ. حاول تاني.",
-    none:"لا توجد دفعات بعد.", voided:"ملغاة", rc:"إيصال", vd:"إلغاء", onAcct:"على الحساب", stmt:"كشف حساب", model:"الموديل", price:"السعر", paid:"المدفوع", rest:"المتبقي",
+    none:"لا توجد دفعات بعد.", other:n => `فيه ${n} دفعة في سنوات مالية تانية. غيّر السنة من القائمة اللي فوق.`, voided:"ملغاة", rc:"إيصال", vd:"إلغاء", onAcct:"على الحساب", stmt:"كشف حساب", model:"الموديل", price:"السعر", paid:"المدفوع", rest:"المتبقي",
     total:"الإجمالي", rcTitle:"إيصال دفع", rcNo:"رقم الإيصال", print:"طباعة", popup:"المتصفح منع النافذة. اسمح بالنوافذ المنبثقة وجرّب تاني.", cnt:"موديل",
     m:{cash:"نقدًا",vodafone:"Vodafone Cash",instapay:"InstaPay",bank:"تحويل بنكي",other:"أخرى"} },
   en: { add:"Add payment", edit:"Edit", cancel:"Cancel", save:"Save", search:"Search by customer...", customer:"Customer", amount:"Amount", date:"Date", method:"Method",
     notes:"Notes", alloc:"Split across models (optional)", left:"Left", auto:"Auto-split", unalloc:"Unallocated (on account)", noM:"No models with an outstanding balance.",
     needC:"Add a customer first from the Customers screen.", needCust:"Choose a customer.", needAmt:"Enter an amount above zero.", overA:"Split total is more than the payment.",
     overR:"A split amount is more than what's left on that model.", sureV:"Void this payment? It stays in the log but won't be counted.", err:"Couldn't save. Try again.",
-    none:"No payments yet.", voided:"Voided", rc:"Receipt", vd:"Void", onAcct:"On account", stmt:"Account statement", model:"Model", price:"Price", paid:"Paid", rest:"Outstanding",
+    none:"No payments yet.", other:n => `${n} payment(s) belong to other financial years. Change the year from the menu above.`, voided:"Voided", rc:"Receipt", vd:"Void", onAcct:"On account", stmt:"Account statement", model:"Model", price:"Price", paid:"Paid", rest:"Outstanding",
     total:"Total", rcTitle:"Payment receipt", rcNo:"Receipt no.", print:"Print", popup:"The browser blocked the window. Allow pop-ups and try again.", cnt:"models",
     m:{cash:"Cash",vodafone:"Vodafone Cash",instapay:"InstaPay",bank:"Bank transfer",other:"Other"} }
 };
@@ -52,7 +52,7 @@ export function printStatement(c, cid) {
 function payRows(c) {
   const l = L[c.st.lang], q = pq.toLowerCase();
   const list = c.st.payments.filter(p => payYear(p) === c.st.year && cname(c,p.customerId).toLowerCase().includes(q) && (!pf.cu || p.customerId === pf.cu) && (!pf.df || (p.date || "") >= pf.df) && (!pf.dt || ((p.date || "") !== "" && p.date <= pf.dt))).sort((a,b) => (b.date||"").localeCompare(a.date||"") || (b.created||0) - (a.created||0));
-  if (!list.length) return `<tr><td colspan="6" class="sub">${l.none}</td></tr>`;
+  if (!list.length) { const o = c.st.payments.filter(p => payYear(p) !== c.st.year).length; return `<tr><td colspan="6" class="sub">${l.none}${o ? " — " + l.other(o) : ""}</td></tr>`; }
   return list.map(p => { const n = Object.keys(p.alloc||{}).length;
     return `<tr class="${p.void?"void-r":""}"><td>${p.date||""}</td><td>${esc(cname(c,p.customerId))}</td><td>${l.m[p.method]||""}</td><td>${c.fmt(p.amount)}</td><td>${n?`${c.num(n)} ${l.cnt}`:l.onAcct}</td>
     <td>${p.void?`<span class="chip">${l.voided}</span>`:`<button class="ib" data-act="rc" data-id="${p.id}">${l.rc}</button><button class="ib" data-act="edit" data-id="${p.id}">${l.edit}</button><button class="ib d" data-act="void" data-id="${p.id}">${l.vd}</button>`}</td></tr>`; }).join("");
@@ -69,7 +69,8 @@ function openPay(c, item) {
   const l = L[c.st.lang], { st } = c;
   if (!st.customers.length) return alert(l.needC);
   if (item && isLocked(st, payYear(item))) return alert(lockMsg(st.lang));
-  const b = item || { date:iso(new Date()), method:"cash", alloc:{} };
+  const cy = String(new Date().getFullYear()), dd = st.year === cy ? iso(new Date()) : st.year < cy ? st.year + "-12-31" : st.year + "-01-01";
+  const b = item || { date:dd, method:"cash", alloc:{} };
   const d = document.createElement("dialog");
   d.innerHTML = `<h3 style="margin:0 0 14px">${item?l.edit:l.add}</h3><div class="fg">
   <label class="field full"><span>${l.customer}</span><select data-k="customerId" ${item?"disabled":""}><option value=""></option>${st.customers.map(x=>`<option value="${x.id}" ${b.customerId===x.id?"selected":""}>${esc(x.name)}</option>`).join("")}</select></label>
@@ -109,6 +110,7 @@ function openPay(c, item) {
         await addDoc(col(c,"log"), { type:"payment.edit", ref:id, before:rest, after:data, at:Date.now(), by:c.st.user.email });
       } else { const r = await addDoc(col(c,"payments"), { ...data, void:false, created:Date.now() });
         await addDoc(col(c,"log"), { type:"payment.create", ref:r.id, after:data, at:Date.now(), by:c.st.user.email }); }
+      if (payYear(data) !== st.year) { st.year = payYear(data); localStorage.year = st.year; }
       d.close();
     } catch (e) { console.error(e); err.textContent = l.err; }
   };
