@@ -119,9 +119,7 @@ const ICON = { dash:'<rect x="3" y="3" width="7" height="9" rx="1.8"/><rect x="1
 const EYE = { on:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   off:'<path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.5 6.6A17 17 0 0 0 2 12s3.6 7 10 7c1.6 0 3-.3 4.3-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>' };
 const eyeBtn = () => `<button class="bell eye" data-eye aria-pressed="${!st.hide}" title="${st.lang === "ar" ? (st.hide ? "إظهار المبالغ" : "إخفاء المبالغ") : (st.hide ? "Show amounts" : "Hide amounts")}"><svg viewBox="0 0 24 24" aria-hidden="true">${st.hide ? EYE.off : EYE.on}</svg></button>`;
-let hideTimer = 0;
-function setHide(v) { st.hide = v; localStorage.nasq_hide = v ? "1" : "0"; clearTimeout(hideTimer); if (!v) hideTimer = setTimeout(() => setHide(true), 60000); if (!document.querySelector("dialog[open]")) render(); }
-document.addEventListener("visibilitychange", () => { if (document.hidden && !st.hide) setHide(true); });
+function setHide(v) { st.hide = v; localStorage.nasq_hide = v ? "1" : "0"; if (!document.querySelector("dialog[open]")) render(); }
 const FEAT = { ar:["العملاء والموديلات في مكان واحد","حسابات ودفعات بدقة","سنوات مالية وتقارير جاهزة"], en:["Customers and models in one place","Accurate accounts and payments","Financial years and ready reports"] };
 const hero = () => `<section class="knit"><div><h1>NAS<span>Q</span></h1><p>${t("tag")}</p><ul class="feat">${FEAT[st.lang].map(x => `<li>${x}</li>`).join("")}</ul></div></section>`;
 function appView() {
