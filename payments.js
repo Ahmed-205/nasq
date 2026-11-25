@@ -36,7 +36,7 @@ function printWin(c, title, body) {
 function printReceipt(c, p) {
   const l = L[c.st.lang], ms = Object.keys(p.alloc||{}).map(id => c.st.models.find(m => m.id === id)).filter(Boolean);
   printWin(c, l.rcTitle, `<h1>NASQ</h1><h2>${l.rcTitle}</h2><p>${l.rcNo}: <b>${p.id.slice(0,6).toUpperCase()}</b><br>${l.date}: ${p.date||""}<br>${l.customer}: <b>${esc(cname(c,p.customerId))}</b><br>${l.method}: ${l.m[p.method]||""}</p>
-  <p class="big">${l.amount}: ${c.fmt(p.amount)}</p>${ms.length ? `<table>${ms.map(m=>`<tr><td>${esc(m.name)}</td><td>${c.fmt(p.alloc[m.id])}</td></tr>`).join("")}</table>` : `<p>${l.onAcct}</p>`}${p.notes?`<p>${esc(p.notes)}</p>`:""}`);
+  <p class="big">${l.amount}: ${c.fmtR(p.amount)}</p>${ms.length ? `<table>${ms.map(m=>`<tr><td>${esc(m.name)}</td><td>${c.fmtR(p.alloc[m.id])}</td></tr>`).join("")}</table>` : `<p>${l.onAcct}</p>`}${p.notes?`<p>${esc(p.notes)}</p>`:""}`);
 }
 export function printStatement(c, cid) {
   const l = L[c.st.lang], x = c.st.customers.find(y => y.id === cid); if (!x) return;
@@ -44,9 +44,9 @@ export function printStatement(c, cid) {
   const ps = c.st.payments.filter(p => p.customerId === cid && !p.void).sort((a,b) => (a.date||"").localeCompare(b.date||""));
   const total = ms.reduce((a,m) => a + (+m.price||0), 0), paid = ps.reduce((a,p) => a + (+p.amount||0), 0);
   printWin(c, l.stmt, `<h1>NASQ</h1><h2>${l.stmt}</h2><p><b>${esc(x.name)}</b> ${esc(x.phone)}<br>${iso(new Date())}</p>
-  <table><tr><th>#</th><th>${l.model}</th><th>${l.price}</th><th>${l.paid}</th><th>${l.left}</th></tr>${ms.map(m=>{const pd=paidOf(c,m.id);return `<tr><td>${m.number||""}</td><td>${esc(m.name)}</td><td>${c.fmt(m.price)}</td><td>${c.fmt(pd)}</td><td>${c.fmt((+m.price||0)-pd)}</td></tr>`;}).join("")}</table>
-  <table><tr><th>${l.date}</th><th>${l.method}</th><th>${l.amount}</th></tr>${ps.map(p=>`<tr><td>${p.date||""}</td><td>${l.m[p.method]||""}</td><td>${c.fmt(p.amount)}</td></tr>`).join("")}</table>
-  <p class="big">${l.total}: ${c.fmt(total)} | ${l.paid}: ${c.fmt(paid)} | ${l.rest}: ${c.fmt(total-paid)}</p>`);
+  <table><tr><th>#</th><th>${l.model}</th><th>${l.price}</th><th>${l.paid}</th><th>${l.left}</th></tr>${ms.map(m=>{const pd=paidOf(c,m.id);return `<tr><td>${m.number||""}</td><td>${esc(m.name)}</td><td>${c.fmtR(m.price)}</td><td>${c.fmtR(pd)}</td><td>${c.fmtR((+m.price||0)-pd)}</td></tr>`;}).join("")}</table>
+  <table><tr><th>${l.date}</th><th>${l.method}</th><th>${l.amount}</th></tr>${ps.map(p=>`<tr><td>${p.date||""}</td><td>${l.m[p.method]||""}</td><td>${c.fmtR(p.amount)}</td></tr>`).join("")}</table>
+  <p class="big">${l.total}: ${c.fmtR(total)} | ${l.paid}: ${c.fmtR(paid)} | ${l.rest}: ${c.fmtR(total-paid)}</p>`);
 }
 
 function payRows(c) {

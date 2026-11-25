@@ -87,10 +87,10 @@ async function exportXlsx(c) {
 }
 function exportPdf(c) {
   const l = L[c.st.lang], t = tables(c), w = window.open("", "_blank"); if (!w) return alert(l.popup);
-  const tb = s => `<table><tr>${s.h.map(h => `<th>${h}</th>`).join("")}</tr>${s.r.map(r => `<tr>${r.map((v, i) => `<td>${s.m.includes(i) ? c.fmt(v) : esc(v)}</td>`).join("")}</tr>`).join("")}</table>`;
+  const tb = s => `<table><tr>${s.h.map(h => `<th>${h}</th>`).join("")}</tr>${s.r.map(r => `<tr>${r.map((v, i) => `<td>${s.m.includes(i) ? c.fmtR(v) : esc(v)}</td>`).join("")}</tr>`).join("")}</table>`;
   w.document.write(`<!doctype html><html dir="${c.st.lang === "ar" ? "rtl" : "ltr"}"><head><meta charset="utf-8"><title>NASQ ${t.y}</title><style>body{font-family:system-ui,Arial,sans-serif;padding:24px;color:#1d2b4a}
   table{width:100%;border-collapse:collapse;margin:10px 0 22px;font-size:12px}td,th{border-bottom:1px solid #ccc;padding:6px;text-align:start}h1{margin:0}@media print{button{display:none}}</style></head>
-  <body><h1>NASQ</h1><h2>${l.rep} ${t.y}</h2><p><b>${l.hC[3]}: ${c.fmt(t.total)} | ${l.hC[4]}: ${c.fmt(t.paid)}</b></p>
+  <body><h1>NASQ</h1><h2>${l.rep} ${t.y}</h2><p><b>${l.hC[3]}: ${c.fmtR(t.total)} | ${l.hC[4]}: ${c.fmtR(t.paid)}</b></p>
   <h3>${l.sMod}</h3>${tb(t.M)}<h3>${l.sPay}</h3>${tb(t.P)}<h3>${l.sCust}</h3>${tb(t.C)}<button onclick="print()">${l.print}</button></body></html>`);
   w.document.close(); w.focus(); setTimeout(() => w.print(), 500);
 }

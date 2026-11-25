@@ -120,3 +120,4 @@ body.nm [data-act=del],body.nm #yrs [data-ya],body.nm #yrs input{display:none}
  main{padding:20px 16px 120px}.top h2{font-size:25px}.fg{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}
 }
 @media(prefers-reduced-motion:reduce){*,*:before{transition:none!important;animation:none!important}}
+.eye svg{width:18px;height:18px;display:block;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}.eye[aria-pressed=true]{color:var(--accent);border-color:var(--accent)}

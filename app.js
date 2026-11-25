@@ -40,7 +40,7 @@ const T = {
       "auth/popup-closed-by-user":"Sign-in window was closed.","auth/api-key-not-valid":"Firebase config is missing. Check firebase-config.js."} }
 };
 const VIEWS = ["dash","customers","models","payments","settings"];
-const st = { user:null, models:[], payments:[], customers:[], years:[], members:[], invites:[], ws:null, role:null, pending:"", year:localStorage.year||String(new Date().getFullYear()), filter:"", cid:null, view:"dash", lang:localStorage.lang||"ar", theme:localStorage.theme||"light", signup:false, err:"", info:"" };
+const st = { hide:localStorage.nasq_hide !== "0", user:null, models:[], payments:[], customers:[], years:[], members:[], invites:[], ws:null, role:null, pending:"", year:localStorage.year||String(new Date().getFullYear()), filter:"", cid:null, view:"dash", lang:localStorage.lang||"ar", theme:localStorage.theme||"light", signup:false, err:"", info:"" };
 let unsubs = [];
 
 const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
@@ -49,10 +49,11 @@ const V = { ar:{ vTitle:"أكّد بريدك الإلكتروني", vText:"تم�
   en:{ vTitle:"Verify your email", vText:"You've been invited to a team. Verify your email first (check your inbox), then tap “I verified”.", vSend:"Send verification link", vDone:"I verified", sent:"Link sent to your email.", still:"Email is not verified yet.", wait:"Loading..." } };
 const tv = k => V[st.lang][k];
 const $ = s => document.querySelector(s);
-const fmt = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US",{style:"currency",currency:(st.settings && st.settings.currency) || "EGP",maximumFractionDigits:0}).format(n||0);
+const fmtR = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US",{style:"currency",currency:(st.settings && st.settings.currency) || "EGP",maximumFractionDigits:0}).format(n||0);
+const fmt = n => st.hide ? "••••" : fmtR(n);
 const num = n => new Intl.NumberFormat(st.lang==="ar"?"ar-EG-u-nu-latn":"en-US").format(n);
 const iso = d => d.toISOString().slice(0,10);
-const ctx = () => ({ st, db, uid: st.ws, role: st.role, auth, t, fmt, num, render, bell: c => searchBtn(c) + bellHtml(c) });
+const ctx = () => ({ st, db, uid: st.ws, role: st.role, auth, t, fmt, fmtR, num, render, bell: c => eyeBtn() + searchBtn(c) + bellHtml(c) });
 
 function stats() {
   const now = new Date(), today = iso(now), yr = st.year, mo = today.slice(0,7);
@@ -115,6 +116,12 @@ const ICON = { dash:'<rect x="3" y="3" width="7" height="9" rx="1.8"/><rect x="1
   customers:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .6 3.2 2.3 3.5 5.2"/>',
   models:'<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>', payments:'<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10.5h18M7 15h3"/>',
   settings:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>' };
+const EYE = { on:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  off:'<path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.5 6.6A17 17 0 0 0 2 12s3.6 7 10 7c1.6 0 3-.3 4.3-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>' };
+const eyeBtn = () => `<button class="bell eye" data-eye aria-pressed="${!st.hide}" title="${st.lang === "ar" ? (st.hide ? "إظهار المبالغ" : "إخفاء المبالغ") : (st.hide ? "Show amounts" : "Hide amounts")}"><svg viewBox="0 0 24 24" aria-hidden="true">${st.hide ? EYE.off : EYE.on}</svg></button>`;
+let hideTimer = 0;
+function setHide(v) { st.hide = v; localStorage.nasq_hide = v ? "1" : "0"; clearTimeout(hideTimer); if (!v) hideTimer = setTimeout(() => setHide(true), 60000); if (!document.querySelector("dialog[open]")) render(); }
+document.addEventListener("visibilitychange", () => { if (document.hidden && !st.hide) setHide(true); });
 const FEAT = { ar:["العملاء والموديلات في مكان واحد","حسابات ودفعات بدقة","سنوات مالية وتقارير جاهزة"], en:["Customers and models in one place","Accurate accounts and payments","Financial years and ready reports"] };
 const hero = () => `<section class="knit"><div><h1>NAS<span>Q</span></h1><p>${t("tag")}</p><ul class="feat">${FEAT[st.lang].map(x => `<li>${x}</li>`).join("")}</ul></div></section>`;
 function appView() {
@@ -138,6 +145,7 @@ function render() {
 }
 
 function bind() {
+  document.querySelectorAll("[data-eye]").forEach(b => b.onclick = () => setHide(!st.hide));
   const on = (s, f) => { const el = $(s); if (el) el.onclick = f; };
   const fail = e => { st.err = T[st.lang].e[e.code] || e.message; st.info = ""; render(); };
   on("#go", () => { const em=$("#em").value.trim(), pw=$("#pw").value;
